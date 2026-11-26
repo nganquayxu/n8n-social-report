@@ -22,6 +22,85 @@ Platforms: Facebook, Instagram, TikTok, YouTube, X, LinkedIn (company page + per
 
 Every fetcher is a sub-workflow that returns the same row schema (`platform, channel, id, title, views, likes, comments, permalink`), so adding a platform means adding one more fetcher.
 
+## How it works
+
+### Map of the main workflow
+
+```mermaid
+flowchart TD
+    T["Daily 10:00 GMT+8<br/>(schedule trigger)"] --> L["Load snapshot<br/>yesterday's numbers"]
+    L --> A["Accounts config<br/>accounts to track"]
+    L --> B["Fetch link clicks<br/>Bitly sub-workflow"]
+    A --> E["Only enabled accounts"]
+
+    E --> F1["Filter + Fetch Facebook"]
+    E --> F2["Filter + Fetch Instagram"]
+    E --> F3["Filter + Fetch TikTok"]
+    E --> F4["Filter + Fetch YouTube"]
+    E --> F5["Filter + Fetch X"]
+    E --> F6["Filter + Fetch LinkedIn"]
+    E --> F7["Filter + Fetch LinkedIn Profile"]
+    E --> F8["Filter + Fetch Threads"]
+
+    F1 & F2 & F3 & F4 & F5 & F6 & F7 & F8 --> MP["Merge Platforms"]
+    MP --> M["Merge"]
+    B --> M
+    M --> R["Build report<br/>deltas + Slack blocks"]
+    R --> S["Save snapshot<br/>for tomorrow"]
+    S --> H{"Has baseline?"}
+    H -- "yes" --> SL["Send report to Slack"]
+    H -- "first run" --> SK["Skip Slack"]
+```
+
+### Step by step
+
+1. **Schedule.** A schedule trigger starts the run every day at 10:00 (GMT+8). Change the time in the trigger node.
+2. **Load snapshot.** An HTTP request asks `Social Snapshot Store` for the numbers saved by the previous run.
+3. **Accounts config.** One Code node holds the list of accounts (`platform`, `channel`, `account_id`, `enabled`). It is the only place you edit to add, remove or disable an account.
+4. **One fetcher per platform.** Each platform has a Filter node and an Execute Workflow node. The Filter keeps only that platform's accounts. The Execute Workflow node calls the matching `Social Fetch - ...` sub-workflow once per account.
+5. **Same row format everywhere.** Every fetcher returns rows with the same fields (`platform, channel, id, title, views, likes, comments, permalink`), so the rest of the flow does not care where the data came from.
+6. **Merge.** `Merge Platforms` combines all fetcher outputs. `Merge` adds the Bitly link clicks.
+7. **Build report.** One Code node compares today's rows with the snapshot to get the day-over-day change, then builds a Slack message (Block Kit blocks, plus a short plain-text fallback for notifications).
+8. **Save snapshot.** Today's numbers are stored for tomorrow's comparison.
+9. **Send to Slack.** On the very first run there is nothing to compare against, so the run only saves a baseline and skips Slack. Every later run posts the report.
+
+### Map of a fetcher (sub-workflow)
+
+```mermaid
+flowchart LR
+    X["Execute Workflow Trigger<br/>account_id, channel, days"] --> P["Prepare request"]
+    P --> API["Platform API or Apify actor"]
+    API --> N["Normalize rows<br/>standard schema"]
+    N --> O["Return rows to the<br/>main workflow"]
+```
+
+The exact nodes differ per platform (for example, Facebook makes extra calls for post insights and Threads picks a credential per brand). The input and the output are always the same.
+
+### Map of the snapshot store
+
+```mermaid
+flowchart LR
+    G["GET /webhook/social-snapshot-load?key=..."] --> LD["Read saved snapshot<br/>from workflow static data"] --> RG["Respond with JSON"]
+    PO["POST /webhook/social-snapshot-save?key=..."] --> SV["Write snapshot<br/>to workflow static data"] --> RP["Respond with JSON"]
+```
+
+It keeps the snapshot in n8n's workflow static data, so it needs no external database. Static data is only saved when the workflow runs from a production webhook, so keep `Social Snapshot Store` **active**.
+
+## Send the report to Slack with a Slack bot
+
+The last node posts the message as a Slack bot, not with a webhook URL.
+
+1. Go to https://api.slack.com/apps and click **Create New App** → **From scratch**. Pick your workspace.
+2. Open **OAuth & Permissions** → **Bot Token Scopes** and add:
+   - `chat:write` to post messages.
+   - `channels:read` (and `groups:read` for private channels) if the node cannot load your channel list when you pick the channel by name.
+3. Click **Install to Workspace** and copy the **Bot User OAuth Token**. It starts with `xoxb-`.
+4. In Slack, create the channel (the workflow uses `social-reports` as an example) and invite the bot: type `/invite @your-bot-name` in the channel. A bot can only post in channels it has joined.
+5. In n8n, create a **Slack API** credential (Access Token) and paste the `xoxb-` token. Choose it in the **Send report to Slack** node and select your channel.
+6. Run the workflow. The node sends the Block Kit blocks built by **Build report** and a plain-text fallback, with link unfurling turned off.
+
+Keep the `xoxb-` token inside the n8n credential. Never paste it into a node, a Code node or a commit.
+
 ## Everything sensitive was removed
 
 These exports contain **no API keys, tokens, account IDs, emails or real brand names**. What you will see instead:
