@@ -69,3 +69,7 @@ These exports contain **no API keys, tokens, account IDs, emails or real brand n
 There is one Execute Workflow node per platform on purpose. A single dynamic node that mixes repeated and different workflow IDs crashes n8n (`assignPairedItems`).
 
 To add a platform: build a `Social Fetch - <Platform>` workflow, add a Filter/Fetch pair, raise the `Merge Platforms` input count, and add the platform to `PLATFORM_ORDER` and `PLATFORM_LOGOS` in **Build report**.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
