@@ -1,0 +1,175 @@
+{
+  "name": "Social Fetch - TikTok",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        9696,
+        3632
+      ],
+      "id": "00d911a2-a1bf-4ea5-b95c-9e24a3032299",
+      "name": "When Executed by Parent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Common landing point for both entry paths (the real \"When Executed by\n// Parent\" caller, and \"Test manually\" for standalone testing), so the\n// normalizer downstream can reliably reference ONE upstream node by name\n// for account_id/channel, regardless of which trigger actually ran.\nreturn $input.all();\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10224,
+        3632
+      ],
+      "id": "557d07a4-6fd0-4b07-b232-545b4e954674",
+      "name": "Prepare request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Maps clockworks/tiktok-scraper's (Apify) dataset output into the standard\n// row schema the main report expects. Each dataset item IS one video --\n// no joining two arrays needed, unlike the old ScrapegraphAI shape.\n//\n// This actor only scrapes video posts (profileScrapeSections: ['videos']),\n// so every row here is classified 'Video' -- TikTok photo-carousel posts\n// aren't returned by this actor and are out of scope for now.\n//\n// account_id/channel come from 'Prepare request' (the shared node both\n// entry paths route through), matched via pairedItem rather than raw\n// forEach index -- one account can expand into many video items here,\n// so index alignment (which worked for the old 1-item-per-account\n// ScrapegraphAI shape) would silently misattribute rows past the first.\n\nfunction srcIndex(item, fallback) {\n  const pi = item.pairedItem;\n  if (typeof pi === 'number') return pi;\n  if (Array.isArray(pi) && pi.length) return pi[0].item;\n  if (pi && typeof pi === 'object' && pi.item !== undefined) return pi.item;\n  return fallback;\n}\n\nconst items = $input.all();\n\nif (!items.length) {\n  const ctx = $('Prepare request').first().json;\n  return [{\n    json: {\n      platform: 'TikTok',\n      channel: ctx.channel,\n      skipped: true,\n      reason: 'No posts found on the profile (blocked, empty, or private).',\n    },\n    pairedItem: 0,\n  }];\n}\n\nreturn items.map((item, index) => {\n  const ctx = $('Prepare request').itemMatching(srcIndex(item, index)).json;\n  const v = item.json;\n\n  return {\n    json: {\n      platform: 'TikTok',\n      channel: ctx.channel,\n      account_id: ctx.account_id,\n      likes_label: 'Likes',\n      id: String(v.id),\n      title: String(v.text || '').slice(0, 100),\n      type: 'Video',\n      views: v.playCount ?? null,\n      likes: v.diggCount ?? null,\n      comments: v.commentCount ?? null,\n      shares: v.shareCount ?? null,\n      permalink: v.webVideoUrl || `https://www.tiktok.com/@${ctx.account_id}/video/${v.id}`,\n      created_at: v.createTimeISO || null,\n      insights_ok: true,\n    },\n    pairedItem: 0,\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10672,
+        3632
+      ],
+      "id": "64713a5a-7af2-40b0-ac0f-af6fb8e5b769",
+      "name": "Normalize TikTok rows"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        9696,
+        3840
+      ],
+      "id": "f67d53de-a560-4c93-92d7-419cacf04c6a",
+      "name": "Test manually"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Test data for standalone runs -- the real caller is the main workflow's\n// Accounts config, which passes one item like this per enabled TikTok account.\n// account_id must be the bare handle (tiktok.com/@<handle>), not a numeric ID.\nreturn [\n  { json: { platform: 'TikTok', channel: 'Brand B', account_id: 'brand_b' } },\n  { json: { platform: 'TikTok', channel: 'Brand A', account_id: 'brand_a' } },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9952,
+        3632
+      ],
+      "id": "ff3f6a2d-7e19-4626-ad65-637c71a94243",
+      "name": "Test accounts"
+    },
+    {
+      "parameters": {
+        "content": "## Social Fetch - TikTok (via Apify: clockworks/tiktok-scraper)\n\nReplaces ScrapegraphAI (ran out of credits) with Apify's most-used TikTok scraper -- actor ID `GdWCkxBtKWOsKjdch` (`clockworks/tiktok-scraper`, 131M+ runs, 4.76/5 rating).\n\n### Setup\n1. Create an **Apify API** credential in n8n with your Apify token, select it on **Run an Actor and get dataset** -- not stored in this file.\n2. In the MAIN workflow's **Accounts config** node, enable the TikTok rows and set `account_id` to the bare handle (e.g. `brand_a`), not a numeric ID.\n3. Update **Test accounts** here with a real handle before testing standalone.\n\n### Known limitation\nThis actor only scrapes **video** posts (`profileScrapeSections: ['videos']`) -- TikTok photo-carousel posts aren't returned, unlike the old ScrapegraphAI mapping which could surface a few. Every row here is classified `Video`.\n\n### Mapping\n`Normalize TikTok rows` reads account_id/channel from **Prepare request** (the shared node both entry paths route through), matched via `pairedItem` since one account's run can expand into many video dataset items -- raw array-index alignment (fine for the old one-item-per-account ScrapegraphAI shape) would misattribute rows here.",
+        "height": 460,
+        "width": 620
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        9680,
+        3056
+      ],
+      "id": "3564227c-d338-46f8-b8d0-21fc82fb533e",
+      "name": "Sticky Note",
+      "height": 480,
+      "width": 640
+    },
+    {
+      "parameters": {
+        "operation": "Run actor and get dataset",
+        "actorId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "https://console.apify.com/actors/GdWCkxBtKWOsKjdch",
+          "__regex": "https://console.apify.com/actors/([a-zA-Z0-9]+).*"
+        },
+        "customBody": "={{ JSON.stringify({ profiles: [$json.account_id], resultsPerPage: 20, profileSorting: 'latest', profileScrapeSections: ['videos'], excludePinnedPosts: false }) }}"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 2,
+      "position": [
+        10448,
+        3632
+      ],
+      "id": "f0ce9369-c4b8-4893-9123-1b951e1231dd",
+      "name": "Run an Actor and get dataset",
+      "credentials": {
+        "apifyApi": {
+          "id": "",
+          "name": "Apify account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When Executed by Parent": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test manually": {
+      "main": [
+        [
+          {
+            "node": "Test accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test accounts": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare request": {
+      "main": [
+        [
+          {
+            "node": "Run an Actor and get dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run an Actor and get dataset": {
+      "main": [
+        [
+          {
+            "node": "Normalize TikTok rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": {}
+}

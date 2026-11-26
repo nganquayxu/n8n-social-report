@@ -1,0 +1,124 @@
+{
+  "name": "Social Fetch - Instagram New",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        1696,
+        560
+      ],
+      "id": "7ccdcc5f-b654-42cb-a4a7-5387c9acbae1",
+      "name": "When Executed by Parent"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v25.0/{{ $json.account_id }}/media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "instagramApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,caption,media_type,media_product_type,permalink,timestamp,insights.metric(views,likes,comments,shares,reach,total_interactions)"
+            },
+            {
+              "name": "since",
+              "value": "={{ DateTime.now().setZone('Asia/Singapore').minus({ days: $json.days || 14 }).startOf('day').toSeconds() }}"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1936,
+        560
+      ],
+      "id": "b2bed5ed-a1f8-4f0f-8c60-3801b75498a8",
+      "name": "Get IG media",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "",
+          "name": "Facebook Brand B account"
+        },
+        "instagramApi": {
+          "id": "",
+          "name": "Instagram Brand A account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Instagram media -> standard report row schema\nconst ctx = $('When Executed by Parent').first().json;\nconst posts = $input.first().json.data || [];\n\nfunction insight(insights, name) {\n  const list = insights && insights.data ? insights.data : [];\n  const m = list.find(x => x.name === name);\n  return Number(m && m.values && m.values[0] ? m.values[0].value : 0) || 0;\n}\n\nfunction typeLabel(p) {\n  if (p.media_product_type === 'REELS') return 'Reel';\n  if (p.media_type === 'VIDEO') return 'Video';\n  if (p.media_type === 'CAROUSEL_ALBUM') return 'Carousel';\n  return 'Photo';\n}\n\nreturn posts\n  .filter(p => p.media_product_type !== 'STORY')\n  .map(p => ({\n    json: {\n      platform: 'Instagram',\n      channel: ctx.channel,\n      account_id: ctx.account_id,\n      likes_label: ctx.likes_label || 'Likes',\n      id: String(p.id),\n      title: (p.caption || 'Instagram Post').split('\\n')[0].slice(0, 60),\n      type: typeLabel(p),\n      views: insight(p.insights, 'views'),\n      likes: insight(p.insights, 'likes'),\n      comments: insight(p.insights, 'comments'),\n      shares: insight(p.insights, 'shares'),\n      permalink: p.permalink || '',\n      created_at: p.timestamp || null,\n    },\n  }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2192,
+        560
+      ],
+      "id": "4bada02d-a326-4f67-aaab-1c4087dac393",
+      "name": "Normalize IG rows"
+    },
+    {
+      "parameters": {
+        "content": "## Social Fetch - Instagram\n\nSub-workflow. Called by **Social Daily Report - Orchestrator**.\n\nInput: `account_id`, `channel`, `likes_label`, `days`\n\nOutput: one item per Reel / Video, using the standard schema:\n`platform, channel, id, title, views, likes, comments, permalink`\n\nToken: credential **Facebook Graph account** (use a System User token so it never expires).",
+        "height": 300,
+        "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        192
+      ],
+      "id": "f3095c08-37e8-4ef6-a625-20ce81d2537a",
+      "name": "Sticky Note"
+    }
+  ],
+  "connections": {
+    "When Executed by Parent": {
+      "main": [
+        [
+          {
+            "node": "Get IG media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get IG media": {
+      "main": [
+        [
+          {
+            "node": "Normalize IG rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "meta": {}
+}

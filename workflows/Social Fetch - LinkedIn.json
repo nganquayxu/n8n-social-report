@@ -1,0 +1,294 @@
+{
+  "name": "Social Fetch - LinkedIn",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        864
+      ],
+      "id": "329919ad-08a4-4be4-af52-f19ea297c404",
+      "name": "When Executed by Parent"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1072
+      ],
+      "id": "e948e88c-5e3f-43e6-a50c-ff235f2300bd",
+      "name": "Test manually"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Test data for standalone runs -- the real caller is the main workflow's\n// Accounts config, which passes one item like this per enabled LinkedIn\n// account. account_id is the NUMERIC organization (company page) ID.\nreturn [\n  { json: { platform: 'LinkedIn', channel: 'Brand A', account_id: 'YOUR_LINKEDIN_ORG_ID', likes_label: 'Reactions', days: 14 } },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        1072
+      ],
+      "id": "ddbc6451-7aba-49ee-92af-138c54dd806b",
+      "name": "Test accounts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Common landing point for both entry paths (the real \"When Executed by\n// Parent\" caller, and \"Test manually\" for standalone testing), so the nodes\n// downstream can reliably reference ONE upstream node by name regardless of\n// which trigger actually ran.\nreturn $input.all();\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        960
+      ],
+      "id": "b4e4c141-8f23-4168-838a-2d8158f15496",
+      "name": "Prepare request"
+    },
+    {
+      "parameters": {
+        "url": "https://api.linkedin.com/rest/posts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "author",
+              "value": "={{ String($json.account_id).startsWith('urn:') ? $json.account_id : 'urn:li:organization:' + $json.account_id }}"
+            },
+            {
+              "name": "q",
+              "value": "author"
+            },
+            {
+              "name": "count",
+              "value": "100"
+            },
+            {
+              "name": "sortBy",
+              "value": "CREATED"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Linkedin-Version",
+              "value": "202609"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            },
+            {
+              "name": "X-RestLi-Method",
+              "value": "FINDER"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        960
+      ],
+      "id": "1311963d-3e1b-4ee0-bc3c-8f1355cc6419",
+      "name": "Get org posts",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "LinkedIn account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns the org's recent posts into share-statistics requests. Posts have\n// either a urn:li:share: or urn:li:ugcPost: id, and the statistics endpoint\n// takes them via separate query params (shares / ugcPosts), so each type is\n// chunked and requested separately.\nconst ctx = $('Prepare request').first().json;\nconst days = Number(ctx.days) || 14;\nconst orgUrn = String(ctx.account_id).startsWith('urn:')\n  ? String(ctx.account_id)\n  : `urn:li:organization:${ctx.account_id}`;\n\nconst enc = encodeURIComponent;\nconst orgQuery =\n  `https://api.linkedin.com/rest/organizationalEntityShareStatistics` +\n  `?q=organizationalEntity&organizationalEntity=${enc(orgUrn)}`;\n\nconst elements = Array.isArray($input.first().json.elements)\n  ? $input.first().json.elements\n  : [];\n\nconst cutoff = Date.now() - days * 24 * 60 * 60 * 1000;\nconst recent = elements.filter(\n  p => p && p.id && (p.publishedAt || p.createdAt || 0) >= cutoff\n);\n\nconst byParam = { shares: [], ugcPosts: [] };\nrecent.forEach(p => {\n  const id = String(p.id);\n  if (id.startsWith('urn:li:ugcPost:')) byParam.ugcPosts.push(id);\n  else if (id.startsWith('urn:li:share:')) byParam.shares.push(id);\n});\n\nconst CHUNK = 10;\nconst urls = [];\nObject.entries(byParam).forEach(([param, ids]) => {\n  for (let i = 0; i < ids.length; i += CHUNK) {\n    const list = ids.slice(i, i + CHUNK).map(enc).join(',');\n    urls.push(`${orgQuery}&${param}=List(${list})`);\n  }\n});\n\n// Nothing to look up (no recent posts, or the post list itself failed): fall\n// back to the plain org-level request so this node always emits at least one\n// valid item and the chain never dead-ends. Its response has no per-post\n// URN, so Normalize ignores it.\nif (!urls.length) urls.push(orgQuery);\n\nreturn urls.map(url => ({ json: { url }, pairedItem: 0 }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        960
+      ],
+      "id": "259ef2e7-9208-43ba-ada1-38a48f0069f7",
+      "name": "Build stats requests"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Linkedin-Version",
+              "value": "202609"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1200,
+        960
+      ],
+      "id": "45c7d903-2727-4a25-bad1-b9bc52af21dc",
+      "name": "Get share statistics",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "LinkedIn account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Maps LinkedIn organic org posts + their lifetime share statistics into the\n// standard row schema the main report expects.\nconst ctx = $('Prepare request').first().json;\nconst days = Number(ctx.days) || 14;\nconst postsRes = $('Get org posts').first().json;\n\nfunction skipped(reason) {\n  return [{\n    json: { platform: 'LinkedIn', channel: ctx.channel, skipped: true, reason },\n    pairedItem: 0,\n  }];\n}\n\nif (!Array.isArray(postsRes.elements)) {\n  const detail = postsRes.error ? JSON.stringify(postsRes.error) : JSON.stringify(postsRes);\n  return skipped('Could not list org posts: ' + detail.slice(0, 300));\n}\n\n// Per-post stats keyed by post URN. Posts with no actions/impressions are\n// OMITTED from the response (LinkedIn docs) -> they're genuine zeros, but only\n// if the stats calls themselves succeeded.\nconst stats = new Map();\nlet statsOk = true;\n\nfor (const item of $input.all()) {\n  const r = item.json;\n  const ok = typeof r.statusCode === 'number' && r.statusCode >= 200 && r.statusCode < 300 && r.body;\n  if (!ok) { statsOk = false; continue; }\n  for (const el of r.body.elements || []) {\n    const key = el.share || el.ugcPost;\n    if (key) stats.set(key, el.totalShareStatistics || {});\n  }\n}\n\nfunction typeLabel(p) {\n  if (p.reshareContext && p.reshareContext.parent) return 'Reshare';\n  const c = p.content || {};\n  if (c.media && c.media.id) {\n    const id = String(c.media.id);\n    if (id.startsWith('urn:li:video:')) return 'Video';\n    if (id.startsWith('urn:li:image:')) return 'Photo';\n    if (id.startsWith('urn:li:document:')) return 'Document';\n    return 'Media';\n  }\n  if (c.multiImage) return 'Photo';\n  if (c.article) return 'Article';\n  if (c.poll) return 'Poll';\n  return 'Text';\n}\n\n// Post commentary uses LinkedIn's \"little\" text format: mentions look like\n// @[Name](urn:...), hashtags like {hashtag|\\#|tag}, and reserved characters\n// are backslash-escaped.\nfunction cleanCommentary(text) {\n  return String(text || '')\n    .replace(/@\\[([^\\]]+)\\]\\([^)]*\\)/g, '$1')\n    .replace(/\\{hashtag\\|\\\\?#\\|([^}]+)\\}/g, '#$1')\n    .replace(/\\\\([\\\\|{}@\\[\\]()<>#*_~])/g, '$1');\n}\n\nconst cutoff = Date.now() - days * 24 * 60 * 60 * 1000;\nconst count = v => (statsOk ? Math.max(0, Number(v) || 0) : null);\n\nconst rows = postsRes.elements\n  .filter(p => p && p.id && (p.lifecycleState || 'PUBLISHED') === 'PUBLISHED')\n  .filter(p => (p.publishedAt || p.createdAt || 0) >= cutoff)\n  .map(p => {\n    const s = stats.get(p.id) || {};\n    const type = typeLabel(p);\n    const firstLine = cleanCommentary(p.commentary).split('\\n').map(l => l.trim()).find(Boolean);\n    const ts = p.publishedAt || p.createdAt || null;\n\n    return {\n      json: {\n        platform: 'LinkedIn',\n        channel: ctx.channel,\n        account_id: ctx.account_id,\n        likes_label: 'Reactions',\n        id: String(p.id),\n        title: (firstLine || `LinkedIn ${type}`).slice(0, 100),\n        type,\n        views: count(s.impressionCount),\n        likes: count(s.likeCount),\n        comments: count(s.commentCount),\n        shares: count(s.shareCount),\n        permalink: `https://www.linkedin.com/feed/update/${p.id}/`,\n        created_at: ts ? new Date(ts).toISOString() : null,\n        insights_ok: statsOk,\n      },\n      pairedItem: 0,\n    };\n  });\n\nreturn rows.length ? rows : skipped(`No posts in the last ${days} days.`);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        960
+      ],
+      "id": "9400ec31-ba61-4b1e-b64b-e0c4cf3015a7",
+      "name": "Normalize LinkedIn rows"
+    },
+    {
+      "parameters": {
+        "content": "## Social Fetch - LinkedIn (Company Page, organic posts)\n\nSub-workflow. Called by **Social Daily Report - Orchestrator**.\n\nInput: `account_id` = the **numeric organization ID** of the company page (not the vanity name), `channel`, `likes_label`, `days`.\n\n### Flow\n`Get org posts` (Posts API, finder `author`) -> `Build stats requests` -> `Get share statistics` (organizationalEntityShareStatistics, per-post lifetime counts) -> `Normalize LinkedIn rows`.\n\nScopes used: `r_organization_social` (list posts) + `rw_organization_admin` (share statistics). The member who connects the credential must be an **ADMINISTRATOR** of the page.\n\n### Credential (do NOT use n8n's built-in \"LinkedIn OAuth2 API\")\nIts scopes are hard-coded (`w_member_social`, `w_organization_social`, profile/openid) and do not include the two read scopes above. Create a generic **OAuth2 API** credential instead:\n- Grant Type: Authorization Code\n- Authorization URL: `https://www.linkedin.com/oauth/v2/authorization`\n- Access Token URL: `https://www.linkedin.com/oauth/v2/accessToken`\n- Scope: `r_organization_social rw_organization_admin`\n- Authentication: **Body** (LinkedIn wants client id/secret in the body)\n- Add n8n's OAuth redirect URL to the LinkedIn app's *Authorized redirect URLs*.\nSelect it on both HTTP nodes -- not stored in this file.\n\n### Heads-up\n- Standard LinkedIn apps get **60-day access tokens with no refresh token** -> reconnect the credential every ~60 days (same chore as the old Facebook token) unless LinkedIn has approved your app for refresh tokens.\n- `Linkedin-Version` header is set to `202609` on both HTTP nodes; older versions are sunset on a rolling basis, so bump it if LinkedIn ever returns a version error.\n- Numbers are lifetime, organic only (no sponsored). Posts with zero impressions/actions are omitted by LinkedIn and treated as 0.\n- **Personal profiles (e.g. Brand B) are NOT covered**: listing a member's posts needs `r_member_social` (restricted, approval-only) and `r_member_postAnalytics` only returns per-post numbers for URNs you already know, or aggregate totals.",
+        "height": 760,
+        "width": 700
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3552e378-083c-43ee-b356-2127f8b66269",
+      "name": "Sticky Note"
+    }
+  ],
+  "connections": {
+    "When Executed by Parent": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test manually": {
+      "main": [
+        [
+          {
+            "node": "Test accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test accounts": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare request": {
+      "main": [
+        [
+          {
+            "node": "Get org posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get org posts": {
+      "main": [
+        [
+          {
+            "node": "Build stats requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build stats requests": {
+      "main": [
+        [
+          {
+            "node": "Get share statistics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get share statistics": {
+      "main": [
+        [
+          {
+            "node": "Normalize LinkedIn rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": {}
+}

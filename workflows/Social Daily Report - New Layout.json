@@ -1,0 +1,1211 @@
+{
+  "name": "Social Daily Report - New Layout",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        66064,
+        19664
+      ],
+      "id": "527fbcdf-660c-4e66-b550-8ae5f1dc7ceb",
+      "name": "Daily 10:00 GMT+8"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        66064,
+        19888
+      ],
+      "id": "45dadc1c-beb7-4f1e-9adf-936ef7eae3b1",
+      "name": "Test manually"
+    },
+    {
+      "parameters": {
+        "url": "https://YOUR_N8N_HOST/webhook/social-snapshot-load",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "social_all_v1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        66304,
+        19760
+      ],
+      "id": "68a6d2c2-0789-46f0-b865-35d776c68ef4",
+      "name": "Load snapshot",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n//  ACCOUNTS TO TRACK  <-- EDIT HERE ONLY\n//  Add / remove / enable / disable accounts without touching any other node.\n//  enabled: false  => account is skipped entirely\n// ============================================================\n\nconst FETCHERS = {\n  Facebook:  'REPLACE_WITH_FACEBOOK_FETCH_WORKFLOW_ID',\n  Instagram: 'REPLACE_WITH_INSTAGRAM_FETCH_WORKFLOW_ID',\n  TikTok:    'REPLACE_WITH_TIKTOK_FETCH_WORKFLOW_ID',\n  YouTube:   'REPLACE_WITH_YOUTUBE_FETCH_WORKFLOW_ID',\n  X:         'REPLACE_WITH_X_FETCH_WORKFLOW_ID',\n  LinkedIn:  'REPLACE_WITH_LINKEDIN_FETCH_WORKFLOW_ID',\n  'LinkedIn Profile': 'REPLACE_WITH_LINKEDIN_PROFILE_FETCH_WORKFLOW_ID',\n  Threads:   'REPLACE_WITH_THREADS_FETCH_WORKFLOW_ID',\n};\n\nconst LOOKBACK_DAYS = 14;\n\nconst accounts = [\n  { platform: 'Facebook',  channel: 'DR Brand B',    account_id: 'YOUR_FACEBOOK_PAGE_ID_B',   likes_label: 'Reactions', enabled: true  },\n  { platform: 'Facebook',  channel: 'Brand A',             account_id: 'YOUR_FACEBOOK_PAGE_ID_A',  likes_label: 'Reactions', enabled: true  },\n  { platform: 'Instagram', channel: '@brand_b',     account_id: 'YOUR_INSTAGRAM_BUSINESS_ID_B', likes_label: 'Likes',     enabled: true  },\n  { platform: 'Instagram', channel: '@brand_a',       account_id: 'YOUR_INSTAGRAM_BUSINESS_ID_A', likes_label: 'Likes',     enabled: true  },\n\n  // --- not configured yet: fill in account_id and switch enabled to true once the credential exists ---\n  { platform: 'TikTok',    channel: 'Brand B',           account_id: 'brand_b', likes_label: 'Likes', enabled: true  },\n  { platform: 'TikTok',    channel: 'Brand A',                 account_id: 'brand_a', likes_label: 'Likes', enabled: true  },\n  { platform: 'YouTube',   channel: 'Brand A',                 account_id: 'YOUR_YOUTUBE_CHANNEL_ID', likes_label: 'Likes', enabled: true  },\n  { platform: 'YouTube',   channel: 'TODO - fill in channel', account_id: '', likes_label: 'Likes', enabled: true },\n  { platform: 'X',         channel: 'Brand A',                account_id: 'brandA',      likes_label: 'Likes', enabled: true },\n  // LinkedIn Company Page: official API, numeric org ID.\n  { platform: 'LinkedIn', channel: 'Brand A', account_id: 'YOUR_LINKEDIN_ORG_ID', likes_label: 'Reactions', enabled: true },\n  // LinkedIn personal profile: official API can't list member posts (r_member_social is closed), so this one\n  // goes through the Apify scraper workflow. account_id = profile URL. Rows come back as platform 'LinkedIn'.\n  { platform: 'LinkedIn Profile', channel: 'Brand B', account_id: 'https://www.linkedin.com/in/your-profile/', likes_label: 'Reactions', enabled: true },\n  // Threads: official Threads API. account_id = Threads user id. Any channel other than 'Brand A' uses the (Brand B) credential in Social Fetch - Threads.\n  { platform: 'Threads', channel: 'Brand A', account_id: 'YOUR_THREADS_USER_ID_A', likes_label: 'Likes', enabled: true },\n  { platform: 'Threads', channel: 'Brand B', account_id: 'YOUR_THREADS_USER_ID_B', likes_label: 'Likes', enabled: true },\n  { platform: 'X',         channel: 'Brand B',           account_id: 'brand_b', likes_label: 'Likes', enabled: true },\n];\n\nreturn accounts.map(a => ({\n  json: Object.assign({}, a, {\n    days: LOOKBACK_DAYS,\n    fetch_workflow_id: FETCHERS[a.platform] || '',\n  }),\n  pairedItem: 0,\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        66544,
+        19760
+      ],
+      "id": "c04ee9b7-02e2-4e97-82eb-cc06bbbdf001",
+      "name": "Accounts config"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "f1",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.enabled }}",
+              "rightValue": ""
+            },
+            {
+              "id": "f2",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.account_id }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        66752,
+        19760
+      ],
+      "id": "e728f6e7-b812-4cbe-b8d4-eaa1bb232b73",
+      "name": "Only enabled accounts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==================================================\n// CONFIG\n// ==================================================\n\nconst SHOW_LINK_PERFORMANCE = true;\n\nconst TRACKED_LINKS = [\n  { affiliate_id: 'YTS', url: 'https://short.example.com/syt' },\n  { affiliate_id: 'FBS', url: 'https://short.example.com/sfb' },\n  { affiliate_id: 'FBCC', url: 'https://short.example.com/ccfb' },\n  { affiliate_id: 'IGS', url: 'https://short.example.com/sig' },\n  { affiliate_id: 'IGCC', url: 'https://short.example.com/ccig' },\n  { affiliate_id: 'TTS', url: 'https://short.example.com/stt' },\n  { affiliate_id: 'TTCC', url: 'https://short.example.com/cctt' },\n  { affiliate_id: 'TWS', url: 'https://short.example.com/stww' },\n  { affiliate_id: 'TWCC', url: 'https://short.example.com/cctw' },\n  { affiliate_id: 'TDS', url: 'https://short.example.com/std' },\n  { affiliate_id: 'TDCC', url: 'https://short.example.com/cctd' },\n  { affiliate_id: 'LIS', url: 'https://short.example.com/sli' },\n  { affiliate_id: 'LICC', url: 'https://short.example.com/ccli' },\n  { affiliate_id: 'BSCC', url: 'https://short.example.com/ccbs' },\n  { affiliate_id: 'FBSGC', url: 'https://short.example.com/fbg' },\n  { affiliate_id: 'WASGC', url: 'https://short.example.com/wag' },\n];\n\n// Free Masterclass links (example.com/masterclass). Same affiliate IDs as TRACKED_LINKS, so they\n// are matched per set (a link is looked up by URL, a platform row by affiliate ID within its set).\nconst MASTERCLASS_LINKS = [\n  { affiliate_id: 'YTS', url: 'https://short.example.com/msyt' },\n  { affiliate_id: 'FBS', url: 'https://short.example.com/msfb' },\n  { affiliate_id: 'FBCC', url: 'https://short.example.com/mccfb' },\n  { affiliate_id: 'IGS', url: 'https://short.example.com/msig' },\n  { affiliate_id: 'IGCC', url: 'https://short.example.com/mccig' },\n  { affiliate_id: 'TTS', url: 'https://short.example.com/mstt' },\n  { affiliate_id: 'TTCC', url: 'https://short.example.com/mcctt' },\n  { affiliate_id: 'TWS', url: 'https://short.example.com/mstw' },\n  { affiliate_id: 'TWCC', url: 'https://short.example.com/mcctw' },\n  { affiliate_id: 'TDS', url: 'https://short.example.com/mstd' },\n  { affiliate_id: 'TDCC', url: 'https://short.example.com/mcctd' },\n  { affiliate_id: 'LIS', url: 'https://short.example.com/msli' },\n  { affiliate_id: 'LICC', url: 'https://short.example.com/mccli' },\n  { affiliate_id: 'BSCC', url: 'https://short.example.com/mccbs' },\n  { affiliate_id: 'FBSGC', url: 'https://short.example.com/mfbg' },\n  { affiliate_id: 'WASGC', url: 'https://short.example.com/mwag' },\n];\n\nconst LINK_PLATFORMS = [\n  { name: 'YouTube', brandA: 'YTS', brandB: null },\n  { name: 'Facebook', brandA: 'FBS', brandB: 'FBCC' },\n  { name: 'Instagram', brandA: 'IGS', brandB: 'IGCC' },\n  { name: 'TikTok', brandA: 'TTS', brandB: 'TTCC' },\n  { name: 'Twitter', brandA: 'TWS', brandB: 'TWCC' },\n  { name: 'Threads', brandA: 'TDS', brandB: 'TDCC' },\n  { name: 'LinkedIn', brandA: 'LIS', brandB: 'LICC' },\n  { name: 'BlueSky', brandA: null, brandB: 'BSCC' },\n  { name: 'FB Group', brandA: 'FBSGC', brandB: null },\n  { name: 'WA Group', brandA: 'WASGC', brandB: null },\n];\n\n// ==================================================\n// LOAD DATA\n// ==================================================\n\nlet prevData = $('Load snapshot').first().json.prev;\n\n// Also accept a snapshot stored as a JSON string.\nif (typeof prevData === 'string') {\n  prevData = prevData.trim() ? JSON.parse(prevData) : null;\n}\n\nconst prevVideos = (prevData && prevData.videos) || {};\nconst prevLinks = (prevData && prevData.links) || {};\n\nconst isFirstRun = !prevData;\nconst hasBaseline = !isFirstRun;\n\nconst now = Date.now();\nconst MS_24H = 24 * 60 * 60 * 1000;\n\nconst input = $input.all()\n  .map(item => item.json)\n  .filter(Boolean);\n\n// ==================================================\n// HELPERS\n// ==================================================\n\nfunction delta(current, previous, isNew) {\n  if (!hasBaseline) return null;\n  if (isNew) return null;\n\n  return Math.max(\n    0,\n    Number(current || 0) - Number(previous || 0)\n  );\n}\n\nfunction fmtDelta(value) {\n  const n = Number(value || 0);\n\n  return (n >= 0 ? '+' : '') + n.toLocaleString('en-US');\n}\n\nfunction fmtNum(value) {\n  return Number(value || 0).toLocaleString('en-US');\n}\n\n// Strips characters that would break a Slack code block.\nfunction tableText(value) {\n  return String(value == null ? '' : value)\n    .replace(/[\\r\\n\\t]+/g, ' ')\n    .replace(/`/g, \"'\");\n}\n\n// Slack mrkdwn requires &, <, > to be escaped wherever user-generated\n// text (video titles, channel names) is interpolated.\nfunction truncateTitle(value, maxLen) {\n  const clean = tableText(value);\n\n  if (clean.length <= maxLen) return clean;\n\n  const cut = clean.slice(0, maxLen);\n  const lastSpace = cut.lastIndexOf(' ');\n  const safe = lastSpace > maxLen * 0.5 ? cut.slice(0, lastSpace) : cut;\n\n  return safe.trimEnd() + '\\u2026';\n}\n\nfunction mrkdwnText(value) {\n  return tableText(value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nfunction renderTable(\n  headers,\n  rows,\n  emptyMessage = '',\n  rightAlignedColumns = [],\n  showHeaderDivider = true,\n  dividerBeforeRowIndex = null\n) {\n  const safeHeaders = headers.map(tableText);\n  const safeRows = rows.map(row => row.map(tableText));\n\n  const widths = safeHeaders.map((header, index) =>\n    Math.max(\n      header.length,\n      ...safeRows.map(row => (row[index] || '').length)\n    )\n  );\n\n  function renderLine(row) {\n    return row\n      .map((value, index) =>\n        rightAlignedColumns.includes(index)\n          ? value.padStart(widths[index], ' ')\n          : value.padEnd(widths[index], ' ')\n      )\n      .join('  ')\n      .trimEnd();\n  }\n\n  const divider = widths.map(w => '-'.repeat(w)).join('  ');\n\n  const bodyLines = safeRows.length ? safeRows.map(renderLine) : [emptyMessage];\n\n  if (dividerBeforeRowIndex != null && dividerBeforeRowIndex > 0 && dividerBeforeRowIndex < bodyLines.length) {\n    bodyLines.splice(dividerBeforeRowIndex, 0, divider);\n  }\n\n  return [\n    '```',\n    renderLine(safeHeaders),\n    ...(showHeaderDivider ? [divider] : []),\n    ...bodyLines,\n    '```',\n  ];\n}\n\nfunction isWithinLastDays(createdAt, days) {\n  if (!createdAt) return false;\n\n  const posted = new Date(createdAt).getTime();\n\n  if (Number.isNaN(posted)) return false;\n\n  return posted >= now - days * MS_24H;\n}\n\n// ==================================================\n// CALCULATE SOCIAL POST CHANGES\n// ==================================================\n\nconst seenRowKeys = new Set();\n\nconst rows = input\n  .filter(row => row.kind !== 'link' && row.id)\n  .filter(row => {\n    const key = `${row.platform}|${row.channel}|${row.id}`;\n\n    if (seenRowKeys.has(key)) return false;\n    seenRowKeys.add(key);\n    return true;\n  })\n  .map(row => ({ ...row }));\n\nrows.forEach(row => {\n  const key = `${row.platform}|${row.channel}|${row.id}`;\n  const previous = prevVideos[key];\n  const isNew = hasBaseline && !previous;\n\n  row.viewsDelta = delta(row.views, previous && previous.views, isNew);\n  row.likesDelta = delta(row.likes, previous && previous.likes, isNew);\n  row.commentsDelta = delta(row.comments, previous && previous.comments, isNew);\n  row.sharesDelta = delta(row.shares, previous && previous.shares, isNew);\n  row.isNew = isNew;\n});\n\n// ==================================================\n// GROUP AND RANK POSTS\n// ==================================================\n\nconst grouped = Object.create(null);\n\nrows.forEach(row => {\n  const group = `${row.platform}|${row.channel}`;\n\n  if (!grouped[group]) grouped[group] = [];\n\n  grouped[group].push(row);\n});\n\n// Per channel: every post from the last 7 days (most-viewed first, for\n// \"Top performing\"), and every post from the last 24h (most-viewed first,\n// for \"New posts\"). Both are time-window based, not delta-since-last-run.\nconst changedByGroup = Object.create(null);\nconst new24hByGroup = Object.create(null);\n\nObject.keys(grouped).forEach(group => {\n  changedByGroup[group] = grouped[group]\n    .filter(row => isWithinLastDays(row.created_at, 7))\n    .sort((a, b) => (b.views || 0) - (a.views || 0));\n\n  new24hByGroup[group] = grouped[group]\n    .filter(row => isWithinLastDays(row.created_at, 1))\n    .sort((a, b) => (b.views || 0) - (a.views || 0));\n});\n\n\n\n// ==================================================\n// PREPARE BITLY DATA\n// ==================================================\n\n// Expected input from the Bitly sub-workflow:\n// {\n//   kind: 'link',\n//   url: 'https://short.example.com/syt',\n//   clicks: 120,\n//   source: 'bitly'\n// }\n//\n// clicks is Bitly's trailing-1-day count (~last 24h), not a lifetime total.\n// The delta below is then simply today's count vs the last run's count.\n\nfunction clickCount(value) {\n  if (value == null || (typeof value === 'string' && value.trim() === '')) {\n    return null;\n  }\n\n  if (!['number', 'string'].includes(typeof value)) {\n    return null;\n  }\n\n  const n = Number(value);\n\n  return Number.isFinite(n) && n >= 0 ? n : null;\n}\n\nconst linkInput = new Map(\n  input\n    .filter(row => row.kind === 'link' && row.url)\n    .map(row => [row.url, row])\n);\n\nconst links = Object.create(null);\n\nfunction trackLinks(configs) {\n  return configs.map(config => {\n    const current = linkInput.get(config.url);\n\n    const clicks = clickCount(current && current.clicks);\n    const source = String((current && current.source) || '');\n\n    const previous = prevLinks[config.url];\n\n    const previousClicks =\n      previous && (previous.source || '') === source\n        ? clickCount(previous.clicks)\n        : null;\n\n    const clicksDelta =\n      clicks != null && previousClicks != null\n        ? clicks - previousClicks\n        : null;\n\n    links[config.url] = { clicks, source };\n\n    return {\n      ...config,\n      clicks,\n      clicksDelta,\n      status: clicks == null ? 'unavailable' : 'available',\n    };\n  });\n}\n\nconst linkTracking = trackLinks(TRACKED_LINKS);\nconst masterclassTracking = trackLinks(MASTERCLASS_LINKS);\n\n// ==================================================\n// BUILD REPORT (Slack Block Kit)\n// ==================================================\n// Block Kit instead of a monospace code-block dump: Slack renders ``` tables\n// as fixed-width text that doesn't wrap, so wide tables (rank + title + 4\n// metric columns) get clipped on anything but a wide desktop pane. Sections\n// and fields reflow naturally instead.\n\nconst blocks = [];\n\nconst reportDateLabel = new Date(now).toLocaleDateString('en-US', {\n  weekday: 'short',\n  month: 'short',\n  day: 'numeric',\n  timeZone: 'Asia/Singapore',\n});\n\nblocks.push({\n  type: 'header',\n  text: { type: 'plain_text', text: '📊 Social Daily Report', emoji: true },\n});\n\nblocks.push({\n  type: 'context',\n  elements: [{ type: 'mrkdwn', text: `${reportDateLabel} · vs. previous run` }],\n});\n\nconst totalViews = rows.reduce((sum, row) => sum + Number(row.views || 0), 0);\nconst totalViewsDelta = rows.reduce((sum, row) => sum + Number(row.viewsDelta || 0), 0);\nconst totalNewPosts = rows.filter(row => isWithinLastDays(row.created_at, 1)).length;\n\nconst availableClicks = linkTracking.filter(link => link.clicks != null);\nconst totalLinkClicks = availableClicks.length\n  ? availableClicks.reduce((sum, link) => sum + link.clicks, 0)\n  : null;\n\n// Single pipe-separated summary line.\nblocks.push({\n  type: 'section',\n  text: {\n    type: 'mrkdwn',\n    text:\n      `*Total views:* ${fmtNum(totalViews)} (${fmtDelta(totalViewsDelta)}) | ` +\n      `*New posts:* ${totalNewPosts} | ` +\n      `*Link clicks (24h):* ${totalLinkClicks == null ? 'N/A' : fmtNum(totalLinkClicks)}`,\n  },\n});\n\nblocks.push({ type: 'divider' });\n\n// Only annotate with a change when one is actually known and non-zero.\nfunction cell(value, delta) {\n  // null = platform doesn't expose this metric (e.g. LinkedIn personal-profile views)\n  if (value == null) return 'N/A';\n\n  const v = fmtNum(value);\n\n  return (delta == null || delta === 0) ? v : `${v} (${fmtDelta(delta)})`;\n}\n\nfunction formatDateAdded(createdAt) {\n  if (!createdAt) return '\\u2014';\n\n  const d = new Date(createdAt);\n\n  if (Number.isNaN(d.getTime())) return '\\u2014';\n\n  return d.toLocaleDateString('en-US', {\n    month: 'short',\n    day: 'numeric',\n    timeZone: 'Asia/Singapore',\n  });\n}\n\n// Merges \"new in last 24h\" and \"top performing in last 7 days\" into one\n// deduped list (a post can legitimately qualify for both), sorted by views.\nfunction mergePosts(freshRows, topRows) {\n  const byId = new Map();\n\n  [...freshRows, ...topRows].forEach(row => {\n    if (!byId.has(row.id)) byId.set(row.id, row);\n  });\n\n  return [...byId.values()].sort((a, b) => (b.views || 0) - (a.views || 0));\n}\n\nconst STATS_HEADERS = ['#', 'Date Added', 'Post', 'Type', 'Total Views', 'Reactions', 'Comments', 'Shares'];\nconst STATS_RIGHT_ALIGNED = [4, 5, 6, 7];\n\nfunction statsRowCells(row, index) {\n  return [\n    `${index + 1}`,\n    formatDateAdded(row.created_at),\n    tableText(truncateTitle(row.title, 32)),\n    tableText(row.type || '\\u2014'),\n    cell(row.views, row.viewsDelta),\n    cell(row.likes, row.likesDelta),\n    cell(row.comments, row.commentsDelta),\n    cell(row.shares, row.sharesDelta),\n  ];\n}\n\n// Renders with EXTERNALLY supplied column widths instead of auto-sizing\n// from its own rows, so every channel's table lines up identically\n// instead of each one sizing independently to its own numbers.\n// Clearbit's public Logo API was deprecated (HubSpot acquisition) --\n// switched to Google's favicon service, which is reliably public.\nconst PLATFORM_LOGOS = {\n  Facebook: 'https://www.google.com/s2/favicons?domain=facebook.com&sz=128',\n  Instagram: 'https://www.google.com/s2/favicons?domain=instagram.com&sz=128',\n  X: 'https://www.google.com/s2/favicons?domain=x.com&sz=128',\n  TikTok: 'https://www.google.com/s2/favicons?domain=tiktok.com&sz=128',\n  YouTube: 'https://www.google.com/s2/favicons?domain=youtube.com&sz=128',\n  LinkedIn: 'https://www.google.com/s2/favicons?domain=linkedin.com&sz=128',\n  Threads: 'https://www.google.com/s2/favicons?domain=threads.com&sz=128',\n};\n\nfunction renderFixedWidthTable(headers, rowsCells, emptyMessage, rightAlignedColumns, widths) {\n  function renderLine(cells) {\n    return cells\n      .map((value, index) =>\n        rightAlignedColumns.includes(index)\n          ? String(value).padStart(widths[index], ' ')\n          : String(value).padEnd(widths[index], ' ')\n      )\n      .join('  ')\n      .trimEnd();\n  }\n\n  return [\n    '```',\n    renderLine(headers),\n    ...(rowsCells.length ? rowsCells.map(renderLine) : [emptyMessage]),\n    '```',\n  ];\n}\n\n// Account-first layout: each account's own section lists every platform it\n// has data for underneath it. Channel names here mirror the main workflow's\n// Accounts config -- keep both in sync if a channel name ever changes.\nconst ACCOUNTS = [\n  {\n    name: 'Dr. Brand B',\n    channels: {\n      Facebook: 'DR Brand B',\n      Instagram: '@brand_b',\n      X: 'Brand B',\n      TikTok: 'Brand B',\n      LinkedIn: 'Brand B',\n      Threads: 'Brand B',\n    },\n  },\n  {\n    name: 'Brand A',\n    channels: {\n      Facebook: 'Brand A',\n      Instagram: '@brand_a',\n      X: 'Brand A',\n      TikTok: 'Brand A',\n      YouTube: 'Brand A',\n      LinkedIn: 'Brand A',\n      Threads: 'Brand A',\n    },\n  },\n];\n\nconst PLATFORM_ORDER = ['Facebook', 'Instagram', 'X', 'TikTok', 'YouTube', 'LinkedIn', 'Threads'];\n\n// Pass 1: gather every channel's rows first, so column widths can be\n// computed once globally -- otherwise each table auto-sizes independently\n// and numbers don't line up between channels (e.g. Facebook's \"612\" vs\n// Instagram's \"9,509 (+4)\").\nconst accountSections = ACCOUNTS.map(account => {\n  const platforms = PLATFORM_ORDER\n    .map(platform => {\n      const channel = account.channels[platform];\n      const group = channel && `${platform}|${channel}`;\n\n      if (!group || !grouped[group]) return null;\n\n      const fresh = (new24hByGroup[group] || []).slice(0, 3);\n      const top3 = (changedByGroup[group] || []).slice(0, 3);\n      const merged = mergePosts(fresh, top3);\n\n      return {\n        platform,\n        rowsCells: merged.map(statsRowCells),\n      };\n    })\n    .filter(Boolean);\n\n  return { name: account.name, platforms };\n}).filter(section => section.platforms.length);\n\nconst allStatsRows = accountSections.flatMap(section =>\n  section.platforms.flatMap(p => p.rowsCells)\n);\n\nconst statsWidths = STATS_HEADERS.map((label, index) => {\n  const dataLen = allStatsRows.reduce(\n    (max, row) => Math.max(max, (row[index] || '').length),\n    0\n  );\n\n  return Math.max(label.length, dataLen);\n});\n\n// Pass 2: emit blocks using the globally-computed widths.\naccountSections.forEach(section => {\n  blocks.push({\n    type: 'section',\n    text: { type: 'mrkdwn', text: `*${section.name}*` },\n  });\n\n  section.platforms.forEach(({ platform, rowsCells }) => {\n    blocks.push({\n      type: 'context',\n      elements: [\n        { type: 'image', image_url: PLATFORM_LOGOS[platform], alt_text: platform },\n        { type: 'mrkdwn', text: `*${platform}*` },\n      ],\n    });\n\n    const body =\n      `_New in last 24h + top performing (last 7 days):_\\n` +\n      renderFixedWidthTable(\n        STATS_HEADERS,\n        rowsCells,\n        '(nothing to show)',\n        STATS_RIGHT_ALIGNED,\n        statsWidths\n      ).join('\\n');\n\n    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: body } });\n  });\n\n  blocks.push({ type: 'divider' });\n});\n\nfunction addLinkTable(title, tracking) {\n  function formatClicks(clicks, change) {\n    if (clicks == null) return 'N/A';\n\n    const total = clicks.toLocaleString('en-US');\n\n    // Only annotate with a change when one is actually known and non-zero --\n    // no baseline yet (first run) or an unchanged count both just show the total.\n    if (change == null || change === 0) return total;\n\n    return `${total} (${fmtDelta(change)})`;\n  }\n\n  const linksByAffiliate = new Map(\n    tracking.map(link => [link.affiliate_id, link])\n  );\n\n  function accountCell(affiliateId) {\n    if (!affiliateId) return '—';\n\n    const link = linksByAffiliate.get(affiliateId);\n\n    return formatClicks(\n      link ? link.clicks : null,\n      link ? link.clicksDelta : null\n    );\n  }\n\n  const tableRows = LINK_PLATFORMS.map((platform, index) => {\n    const assignedIds = [platform.brandA, platform.brandB].filter(Boolean);\n    const assignedLinks = assignedIds.map(id => linksByAffiliate.get(id));\n\n    const hasAllCounts = assignedLinks.every(link => link && link.clicks != null);\n    const hasAllChanges = assignedLinks.every(link => link && link.clicksDelta != null);\n\n    const totalClicks = hasAllCounts\n      ? assignedLinks.reduce((sum, link) => sum + link.clicks, 0)\n      : null;\n    const totalChange = hasAllChanges\n      ? assignedLinks.reduce((sum, link) => sum + link.clicksDelta, 0)\n      : null;\n\n    return [\n      `${index + 1}`,\n      platform.name,\n      accountCell(platform.brandA),\n      accountCell(platform.brandB),\n      formatClicks(totalClicks, totalChange),\n    ];\n  });\n\n  // Sum across every available link (unavailable/unassigned ones are\n  // skipped rather than treated as zero, so a not-yet-configured platform\n  // doesn't silently drag the grand total down).\n  function sumAvailable(links, field) {\n    const available = links.filter(link => link && link[field] != null);\n\n    return available.length\n      ? available.reduce((sum, link) => sum + link[field], 0)\n      : null;\n  }\n\n  const brandALinks = LINK_PLATFORMS\n    .map(platform => platform.brandA && linksByAffiliate.get(platform.brandA))\n    .filter(Boolean);\n  const brandBLinks = LINK_PLATFORMS\n    .map(platform => platform.brandB && linksByAffiliate.get(platform.brandB))\n    .filter(Boolean);\n\n  tableRows.push([\n    '\\u2014',\n    'Total',\n    formatClicks(sumAvailable(brandALinks, 'clicks'), sumAvailable(brandALinks, 'clicksDelta')),\n    formatClicks(sumAvailable(brandBLinks, 'clicks'), sumAvailable(brandBLinks, 'clicksDelta')),\n    formatClicks(sumAvailable(tracking, 'clicks'), sumAvailable(tracking, 'clicksDelta')),\n  ]);\n\n  blocks.push({\n    type: 'section',\n    text: { type: 'mrkdwn', text: `*${title}*` },\n  });\n\n  blocks.push({\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: renderTable(\n        ['#', 'Platform', 'Brand A', 'Brand B', 'Total'],\n        tableRows,\n        '',\n        [2, 3, 4],\n        false,\n        tableRows.length - 1\n      ).join('\\n'),\n    },\n  });\n}\n\nif (SHOW_LINK_PERFORMANCE) {\n  addLinkTable('🔗 Link performance (brandA.com/webinars)', linkTracking);\n  addLinkTable('🎓 Free Masterclass (example.com/masterclass)', masterclassTracking);\n}\n\n// ==================================================\n// SNAPSHOT AND OUTPUT\n// ==================================================\n\nconst videos = Object.create(null);\n\nrows.forEach(row => {\n  const key = `${row.platform}|${row.channel}|${row.id}`;\n\n  videos[key] = {\n    views: row.views,\n    likes: row.likes,\n    comments: row.comments,\n    shares: row.shares,\n    title: row.title,\n  };\n});\n\nconst snapshot = {\n  date: new Date(now).toISOString().slice(0, 10),\n  videos,\n  links,\n};\n\n// Slack's chat.postMessage still wants a plain-text `text` as a notification\n// fallback even when sending Block Kit `blocks`.\nconst fallbackText =\n  `Social Daily Report: ${fmtNum(totalViews)} views (${fmtDelta(totalViewsDelta)}), ` +\n  `${totalNewPosts} new post${totalNewPosts === 1 ? '' : 's'}.`;\n\nreturn [\n  {\n    json: {\n      text: fallbackText,\n      blocks,\n      blocksJson: JSON.stringify({ blocks }),\n      videoCount: rows.length,\n      snapshot,\n      isFirstRun,\n      linkTracking,\n      masterclassTracking,\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        68128,
+        20432
+      ],
+      "id": "ed1fe1bc-6855-45ec-86b9-72f25202cc87",
+      "name": "Build report"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_N8N_HOST/webhook/social-snapshot-save",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "social_all_v1"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.snapshot) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        68496,
+        20432
+      ],
+      "id": "ac111ef5-5cdd-46bb-8d73-34649737ab2d",
+      "name": "Save snapshot",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "b1",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              },
+              "leftValue": "={{ $('Build report').first().json.isFirstRun }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        68832,
+        20432
+      ],
+      "id": "dca2bf11-adc9-4543-b458-034a1631abb3",
+      "name": "Has baseline?"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "social-reports",
+          "mode": "name"
+        },
+        "messageType": "block",
+        "blocksUi": "={{ $('Build report').first().json.blocksJson }}",
+        "text": "={{ $('Build report').first().json.text }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false,
+          "unfurl_links": false,
+          "unfurl_media": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        69072,
+        20336
+      ],
+      "id": "aa9e2671-9d2a-4916-b72f-1b8a84eab855",
+      "name": "Send report to Slack",
+      "credentials": {
+        "slackApi": {
+          "id": "",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        69072,
+        20560
+      ],
+      "id": "64d7ef33-237d-47ee-b80f-4bc948ff1084",
+      "name": "Baseline run - skip Slack"
+    },
+    {
+      "parameters": {
+        "content": "# Social Daily Report - New Layout\n\nOne schedule trigger (10:00 GMT+8) and **one** consolidated Slack message (channel `social-reports`).\n\n### Flow\n`Daily 10:00 GMT+8` -> `Load snapshot` -> `Accounts config` -> `Only enabled accounts` -> one `Filter: <X>` + one fixed-ID `Fetch <X>` (Execute Workflow) per platform -> `Merge Platforms` -> `Merge` (+ `Fetch link clicks`) -> `Build report` -> `Save snapshot` -> `Has baseline?` -> `Send report to Slack`\n\n**8 Fetch nodes:** Facebook, Instagram, TikTok, YouTube, X (disabled), LinkedIn (Company Page, official API), LinkedIn Profile (personal profile via Apify -- routed by `platform: 'LinkedIn Profile'`, but its rows come back as platform `LinkedIn`), Threads. Link clicks come from `Fetch link clicks` (Bitly workflow).\n\n### Why one Fetch node per platform instead of 1 dynamic one\nThe old design used a single `Fetch metrics` node with a dynamic `workflowId` expression, looping over every enabled account in \"each\" mode. Confirmed by direct testing: n8n's engine crashes (`assignPairedItems`, \"Cannot read properties of undefined (reading 'entries')\") whenever that one node has to call a REPEATED workflow ID (2 accounts of the same platform) mixed with a DIFFERENT workflow ID in the same loop. Each platform now has its own Execute Workflow node with a hardcoded ID, so it only ever repeats the SAME id across its own accounts -- the one pattern confirmed safe.\n\n### Add / remove / disable an account\nEdit **Accounts config** only (`platform`, `channel`, `account_id`, `enabled`). The Filter nodes route by `platform`, which already matches every value Accounts config produces.\n\n### Add a NEW platform\n1. Build a `Social Fetch - <Platform>` workflow that returns the standard row schema.\n2. Add its workflow ID to `FETCHERS` and its accounts in **Accounts config**.\n3. Copy a Filter + Fetch pair, set the new `platform` / workflow ID.\n4. Raise **Merge Platforms** `numberInputs` and connect the new Fetch to the new input.\n5. In **Build report** add the platform to `ACCOUNTS` (channel names), `PLATFORM_ORDER` and `PLATFORM_LOGOS`.\n\n### What the report shows\nPer account (Dr. Brand B, Brand A) and platform: new posts (24h) + top posts (7 days). Then two link tables from Bitly: **Link performance** (webinar links, `TRACKED_LINKS`) and **Free Masterclass link performance** (`MASTERCLASS_LINKS`). Both lists must match the `Tracked links` node in **Social Fetch - Bitly**. A metric a platform does not expose (e.g. LinkedIn personal-profile views) shows as N/A.\n\n### Snapshot\nAll platforms share one key `social_all_v1` in **Social Snapshot Store**. Posts are keyed `platform|channel|id`; links by short URL. Changes (+/-) compare against the previous run.\n\n### Failure handling\nEach `Fetch <Platform>` node runs with **Continue on error**, so one dead platform cannot break the report -- it just contributes no rows.",
+        "height": 1160,
+        "width": 700
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        66032,
+        18352
+      ],
+      "id": "c7e89cfe-98b2-48a3-abfa-5b910a79d61e",
+      "name": "Sticky Note",
+      "height": 620,
+      "width": 760
+    },
+    {
+      "parameters": {
+        "content": "## Status\n\n**Facebook + Instagram are LIVE** using a short-lived (~2 month) User token pasted into the *Facebook Graph account* credential.\nRemember to renew this token before it expires, or switch to a System User token (expiration = Never) to avoid repeating this every 2 months.\n\n**TikTok / YouTube / X** are still `enabled: false`.\nOpen each `Social Fetch - ...` workflow to see what it needs.",
+        "height": 280,
+        "width": 460,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        66864,
+        18528
+      ],
+      "id": "ca628a51-4005-430c-a925-f00b49908b13",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BITLY_FETCH_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        66592,
+        20448
+      ],
+      "id": "121e81cd-df27-4468-b11e-38eb55e103dc",
+      "name": "Fetch link clicks",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        67792,
+        20432
+      ],
+      "id": "17c17fbb-9434-4e23-8271-d582aeecf5cb",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "filter-facebook",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.platform }}",
+              "rightValue": "Facebook"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        66976,
+        18928
+      ],
+      "id": "5f436269-78b3-4fa2-aae9-a9e6440ee23f",
+      "name": "Filter: Facebook"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_FACEBOOK_FETCH_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        67216,
+        18928
+      ],
+      "id": "9356afd3-394d-4621-b075-a7cf53b4e189",
+      "name": "Fetch Facebook",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "filter-instagram",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.platform }}",
+              "rightValue": "Instagram"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        66976,
+        19120
+      ],
+      "id": "5d9ecb48-89f7-48ca-9719-344c7f1e9b69",
+      "name": "Filter: Instagram"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_INSTAGRAM_FETCH_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        67216,
+        19120
+      ],
+      "id": "02f9c28d-3901-4cad-bb79-10e2d04cc33c",
+      "name": "Fetch Instagram",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "filter-tiktok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.platform }}",
+              "rightValue": "TikTok"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        66976,
+        19312
+      ],
+      "id": "fe84c94c-0926-4f26-ac4f-37ac1d3d2b99",
+      "name": "Filter: TikTok"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_TIKTOK_FETCH_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        67216,
+        19312
+      ],
+      "id": "3d2c5c5f-b972-4edb-98a1-1d97737da46f",
+      "name": "Fetch TikTok",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "filter-youtube",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.platform }}",
+              "rightValue": "YouTube"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        66976,
+        19504
+      ],
+      "id": "4ff3d5dc-3ca3-4eca-99b2-4b4cdfbdaefb",
+      "name": "Filter: YouTube"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUTUBE_FETCH_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        67216,
+        19504
+      ],
+      "id": "55fe0998-2e5c-4b41-988b-c39cd34dd6d3",
+      "name": "Fetch YouTube",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "filter-x",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.platform }}",
+              "rightValue": "X"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        66976,
+        19696
+      ],
+      "id": "28ff5457-382e-4121-8103-539a79c41aea",
+      "name": "Filter: X"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_X_FETCH_WORKFLOW_ID",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/REPLACE_WITH_X_FETCH_WORKFLOW_ID"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        67216,
+        19696
+      ],
+      "id": "05eefb4c-4d45-49fa-8853-34c49632e6f9",
+      "name": "Fetch X",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "numberInputs": 8
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        67456,
+        19536
+      ],
+      "id": "7ff681aa-99bb-4d07-b122-deb1c7ab813d",
+      "name": "Merge Platforms"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "filter-linkedin",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.platform }}",
+              "rightValue": "LinkedIn"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        66976,
+        19888
+      ],
+      "id": "2f0ccda9-4ff6-4d97-8248-239ab8089b32",
+      "name": "Filter: LinkedIn"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_LINKEDIN_FETCH_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        67216,
+        19888
+      ],
+      "id": "5adb9aff-cc1a-47c7-b0d9-6b579a289ebf",
+      "name": "Fetch LinkedIn",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "filter-linkedin-profile",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.platform }}",
+              "rightValue": "LinkedIn Profile"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        66976,
+        20080
+      ],
+      "id": "5fd3ee98-bc62-4ac8-84af-f123111890af",
+      "name": "Filter: LinkedIn Profile"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_LINKEDIN_PROFILE_FETCH_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        67216,
+        20080
+      ],
+      "id": "97470531-ce03-482d-80d4-f6f33e108c9b",
+      "name": "Fetch LinkedIn Profile",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "filter-threads",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.platform }}",
+              "rightValue": "Threads"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        66976,
+        20272
+      ],
+      "id": "6be4bab5-b651-44c2-9e2d-a8bc6eb3a714",
+      "name": "Filter: Threads"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_THREADS_FETCH_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        67216,
+        20272
+      ],
+      "id": "a3f23289-df8f-4cb3-b865-384949f66714",
+      "name": "Fetch Threads",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "# Social Daily Report - New Layout\nRuns 10:00 AM GMT+8 and posts **one** Slack message (`social-reports`).\n\n**Flow:** `Load snapshot` -> `Accounts config` -> `Only enabled accounts` -> one `Filter` + `Fetch` per platform (Facebook, Instagram, TikTok, YouTube, X, LinkedIn, LinkedIn Profile, Threads) -> `Merge Platforms` -> `Merge` (+ `Fetch link clicks` = Bitly) -> `Build report` -> `Save snapshot` -> `Slack`.\n\n**Add / remove / disable an account:** edit **Accounts config** only.\n**New platform:** new `Social Fetch` workflow + Filter/Fetch pair, raise `Merge Platforms` inputs, add it to `ACCOUNTS` / `PLATFORM_ORDER` / `PLATFORM_LOGOS` in `Build report`.\n\n**Why one Fetch node per platform:** a single dynamic Execute Workflow node crashes n8n (`assignPairedItems`) when it mixes repeated and different workflow IDs.\n\n**Link tables:** `TRACKED_LINKS` / `MASTERCLASS_LINKS` in `Build report` must match `Tracked links` in the Bitly workflow. Snapshot key: `social_all_v1`. Fetch nodes use Continue on error.",
+        "height": 432,
+        "width": 704
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        65296,
+        18528
+      ],
+      "typeVersion": 1,
+      "id": "98fb7f33-0308-4f6a-acf0-523c2812c18e",
+      "name": "Sticky Note2"
+    }
+  ],
+  "connections": {
+    "Test manually": {
+      "main": [
+        [
+          {
+            "node": "Load snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load snapshot": {
+      "main": [
+        [
+          {
+            "node": "Accounts config",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch link clicks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accounts config": {
+      "main": [
+        [
+          {
+            "node": "Only enabled accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only enabled accounts": {
+      "main": [
+        [
+          {
+            "node": "Filter: Facebook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter: Instagram",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter: TikTok",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter: YouTube",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter: X",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter: LinkedIn",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter: LinkedIn Profile",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter: Threads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build report": {
+      "main": [
+        [
+          {
+            "node": "Save snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save snapshot": {
+      "main": [
+        [
+          {
+            "node": "Has baseline?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has baseline?": {
+      "main": [
+        [
+          {
+            "node": "Send report to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Baseline run - skip Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 10:00 GMT+8": {
+      "main": [
+        [
+          {
+            "node": "Load snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch link clicks": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Build report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Facebook": {
+      "main": [
+        [
+          {
+            "node": "Fetch Facebook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Instagram": {
+      "main": [
+        [
+          {
+            "node": "Fetch Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: TikTok": {
+      "main": [
+        [
+          {
+            "node": "Fetch TikTok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: YouTube": {
+      "main": [
+        [
+          {
+            "node": "Fetch YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: X": {
+      "main": [
+        [
+          {
+            "node": "Fetch X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Facebook": {
+      "main": [
+        [
+          {
+            "node": "Merge Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Instagram": {
+      "main": [
+        [
+          {
+            "node": "Merge Platforms",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Fetch TikTok": {
+      "main": [
+        [
+          {
+            "node": "Merge Platforms",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Fetch YouTube": {
+      "main": [
+        [
+          {
+            "node": "Merge Platforms",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Fetch X": {
+      "main": [
+        [
+          {
+            "node": "Merge Platforms",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge Platforms": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Fetch LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Merge Platforms",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "Filter: LinkedIn Profile": {
+      "main": [
+        [
+          {
+            "node": "Fetch LinkedIn Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch LinkedIn Profile": {
+      "main": [
+        [
+          {
+            "node": "Merge Platforms",
+            "type": "main",
+            "index": 6
+          }
+        ]
+      ]
+    },
+    "Filter: Threads": {
+      "main": [
+        [
+          {
+            "node": "Fetch Threads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Threads": {
+      "main": [
+        [
+          {
+            "node": "Merge Platforms",
+            "type": "main",
+            "index": 7
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "Asia/Singapore",
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "meta": {}
+}

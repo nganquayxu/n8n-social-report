@@ -1,0 +1,173 @@
+{
+  "name": "Social Fetch - Brand B LinkedIn Profile",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "63f704b8-36aa-4568-ac67-a9995fa0e613",
+      "name": "When Executed by Parent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "329f3ad3-2d7e-43af-8927-3f5cd009907d",
+      "name": "Test manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        16,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Test data for standalone runs. The real caller is the main workflow's\n// Accounts config. account_id is the full profile URL.\nreturn [\n  { json: { platform: 'LinkedIn Profile', channel: 'Brand B', account_id: 'https://www.linkedin.com/in/your-profile/' } },\n];\n"
+      },
+      "id": "4d2b5e8a-1e62-43e8-9917-5b4228f0dc78",
+      "name": "Test accounts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Common landing point for both entry paths so the normalizer can reference\n// ONE upstream node by name. Also accepts a bare handle and turns it into a\n// profile URL.\nreturn $input.all().map(item => {\n  const id = String(item.json.account_id || '').trim();\n  const url = /^https?:\\/\\//i.test(id) ? id : `https://www.linkedin.com/in/${id.replace(/^\\/+|\\/+$/g, '')}/`;\n  return { json: { ...item.json, account_id: url }, pairedItem: item.pairedItem ?? 0 };\n});\n"
+      },
+      "id": "8baf3b06-2281-4101-a9cc-a5989a0e842a",
+      "name": "Prepare request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "Run actor and get dataset",
+        "actorId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "https://console.apify.com/actors/A3cAPGpwBEG8RJwse",
+          "__regex": "https://console.apify.com/actors/([a-zA-Z0-9]+).*"
+        },
+        "customBody": "={{ JSON.stringify({ targetUrls: [$json.account_id], maxPosts: 20, includeReposts: true, includeQuotePosts: true, scrapeReactions: false, scrapeComments: false }) }}"
+      },
+      "id": "6968fbbd-f0dc-4ea8-bdfd-0c8e7e3cee53",
+      "name": "Run an Actor and get dataset",
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 2,
+      "position": [
+        768,
+        400
+      ],
+      "credentials": {
+        "apifyApi": {
+          "id": "",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Maps harvestapi/linkedin-profile-posts (Apify) output into the standard row\n// schema. Each dataset item IS one post. Public scraping exposes NO impression\n// counts, so `views` is always null (the report shows N/A for it).\n//\n// account_id/channel come from 'Prepare request' via pairedItem, same pattern\n// as the TikTok fetcher. Rows are emitted as platform 'LinkedIn' so they land\n// in the existing LinkedIn section of the report under the personal channel.\n\nfunction srcIndex(item, fallback) {\n  const pi = item.pairedItem;\n  if (typeof pi === 'number') return pi;\n  if (Array.isArray(pi) && pi.length) return pi[0].item;\n  if (pi && typeof pi === 'object' && pi.item !== undefined) return pi.item;\n  return fallback;\n}\n\nconst items = $input.all();\nconst first = $('Prepare request').first().json;\n\n// Apify actors with limited permissions can return a demo placeholder instead\n// of real data when the account has no access -- fail loudly rather than\n// reporting a fake post.\nif (items.some(i => i.json && i.json.demo === true)) {\n  throw new Error('Apify returned demo data for harvestapi/linkedin-profile-posts. Check the Apify plan/permissions for this actor.');\n}\n\nconst posts = items.filter(i => i.json && i.json.id && (i.json.content !== undefined || i.json.linkedinUrl));\n\nif (!posts.length) {\n  return [{\n    json: {\n      platform: 'LinkedIn',\n      channel: first.channel,\n      skipped: true,\n      reason: 'No posts returned for the profile (private, empty, or scrape blocked).',\n    },\n    pairedItem: 0,\n  }];\n}\n\nfunction postType(p) {\n  if (p.document) return 'Document';\n  if (p.postVideo || p.video || (p.media && p.media.type === 'video')) return 'Video';\n  if (Array.isArray(p.postImages) && p.postImages.length) return 'Photo';\n  if (p.article) return 'Article';\n  if (p.poll) return 'Poll';\n  if (p.repostedBy || p.repost || p.type === 'repost') return 'Reshare';\n  return 'Text';\n}\n\nfunction cleanTitle(text) {\n  return String(text || '')\n    .replace(/\\s+/g, ' ')\n    .replace(/\\{hashtag\\|\\\\?#\\|([^}]+)\\}/g, '#$1')\n    .trim()\n    .slice(0, 100);\n}\n\nconst num = v => (typeof v === 'number' ? v : (v == null || v === '' ? null : Number(v)));\n\nreturn posts.map((item, index) => {\n  const ctx = $('Prepare request').itemMatching(srcIndex(item, index)).json;\n  const p = item.json;\n  const eng = p.engagement || {};\n  const created = (p.postedAt && (p.postedAt.date || p.postedAt.timestamp)) || null;\n\n  return {\n    json: {\n      platform: 'LinkedIn',\n      channel: ctx.channel,\n      account_id: ctx.account_id,\n      likes_label: 'Reactions',\n      id: String(p.id),\n      title: cleanTitle(p.content),\n      type: postType(p),\n      views: null,\n      likes: num(eng.likes),\n      comments: num(eng.comments),\n      shares: num(eng.shares),\n      permalink: p.linkedinUrl || (p.socialContent && p.socialContent.shareUrl) || null,\n      created_at: created ? new Date(created).toISOString() : null,\n      insights_ok: true,\n    },\n    pairedItem: 0,\n  };\n});\n"
+      },
+      "id": "e997ba87-f59a-43d8-b11e-8caf716377b1",
+      "name": "Normalize LinkedIn Profile rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Social Fetch - LinkedIn Profile (personal)\n\nScrapes a personal LinkedIn profile's recent posts with the Apify actor **harvestapi/linkedin-profile-posts** (no LinkedIn login/cookies needed). Used because LinkedIn's official API does not allow reading personal-profile posts (`r_member_social` is closed).\n\n- Input per account: `account_id` = profile URL (or bare handle).\n- Returns the standard row schema with `platform: 'LinkedIn'`.\n- **views is always null** -- impressions are private to the author and not public.\n- Likes = reactions, comments and shares come from the public counters.\n- Cost ~ $0.002 per post. 20 posts per run.\n- Scraping LinkedIn is against LinkedIn's terms; the actor can break without notice.\n",
+        "height": 300,
+        "width": 520
+      },
+      "id": "2cf25707-f65f-4874-b3fb-740e49de41fc",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Parent": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test manually": {
+      "main": [
+        [
+          {
+            "node": "Test accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test accounts": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare request": {
+      "main": [
+        [
+          {
+            "node": "Run an Actor and get dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run an Actor and get dataset": {
+      "main": [
+        [
+          {
+            "node": "Normalize LinkedIn Profile rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": {}
+}

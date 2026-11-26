@@ -1,0 +1,395 @@
+{
+  "name": "Social Fetch - YouTube",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        2992,
+        336
+      ],
+      "id": "2bc8b10c-3330-4bd6-a83a-a911b86d0a12",
+      "name": "When Executed by Parent"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/channels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "contentDetails"
+            },
+            {
+              "name": "id",
+              "value": "={{ $json.account_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3232,
+        336
+      ],
+      "id": "0af95575-ff21-4ec0-91b2-1a7cece772dd",
+      "name": "Get channel uploads playlist",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "",
+          "name": "YouTube account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('When Executed by Parent').first().json;\nconst channelItem = ($input.first().json.items || [])[0];\nconst uploadsPlaylistId = channelItem && channelItem.contentDetails\n  && channelItem.contentDetails.relatedPlaylists\n  && channelItem.contentDetails.relatedPlaylists.uploads;\n\nif (!uploadsPlaylistId) {\n  return [{ json: { ...ctx, uploadsPlaylistId: null, skipped: true, reason: 'Channel not found or has no uploads playlist' } }];\n}\n\nreturn [{ json: { ...ctx, uploadsPlaylistId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3472,
+        336
+      ],
+      "id": "29378ee5-7d97-40a7-bf0f-ba58ac3a83dc",
+      "name": "Extract uploads playlist id"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-playlist",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.uploadsPlaylistId }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3712,
+        336
+      ],
+      "id": "02e7a7d8-526d-4f04-bc6e-fb91c0fcd370",
+      "name": "Has uploads playlist?"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/playlistItems",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "contentDetails"
+            },
+            {
+              "name": "playlistId",
+              "value": "={{ $json.uploadsPlaylistId }}"
+            },
+            {
+              "name": "maxResults",
+              "value": "50"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3952,
+        320
+      ],
+      "id": "f772ffc1-9ca6-48af-9e44-e9a5f2ba1284",
+      "name": "Get playlist items",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "",
+          "name": "YouTube account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Extract uploads playlist id').first().json;\nconst items = $input.first().json.items || [];\nconst videoIds = items\n  .map(it => it.contentDetails && it.contentDetails.videoId)\n  .filter(Boolean);\n\nif (!videoIds.length) {\n  return [{ json: { ...ctx, videoIds: null, skipped: true, reason: 'No uploaded videos found' } }];\n}\n\n// videos.list accepts up to 50 ids per call, same limit as playlistItems.maxResults above.\nreturn [{ json: { ...ctx, videoIds: videoIds.join(',') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4192,
+        320
+      ],
+      "id": "da13217c-7b07-483f-b308-2072451d1a8b",
+      "name": "Extract video IDs"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-videos",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.videoIds }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4432,
+        320
+      ],
+      "id": "e00af29d-0a72-46f6-a1c4-6b7ce050c73c",
+      "name": "Has videos?"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/videos",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "snippet,statistics,contentDetails"
+            },
+            {
+              "name": "id",
+              "value": "={{ $json.videoIds }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4672,
+        240
+      ],
+      "id": "0442e562-0318-47ad-a863-700815af1e3f",
+      "name": "Get video stats",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "",
+          "name": "YouTube account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ISO 8601 duration (e.g. \"PT1M45S\") -> seconds. YouTube's own Shorts definition\n// also considers aspect ratio, but duration is the reliable signal available here.\n// Threshold is 180s (3 min), not 60s -- YouTube expanded the Shorts max length\n// from 60s to 3 minutes in late 2024.\nfunction durationSeconds(iso) {\n  const m = /^PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?$/.exec(iso || '');\n  if (!m) return 0;\n  const [, h, min, s] = m;\n  return Number(h || 0) * 3600 + Number(min || 0) * 60 + Number(s || 0);\n}\n\nconst ctx = $('Extract video IDs').first().json;\nconst items = $input.first().json.items || [];\n\nreturn items.map(v => ({\n  json: {\n    platform: 'YouTube',\n    channel: ctx.channel,\n    account_id: ctx.account_id,\n    likes_label: ctx.likes_label || 'Likes',\n    id: String(v.id),\n    title: (v.snippet && v.snippet.title || 'YouTube Video').split('\\n')[0].slice(0, 60),\n    type: durationSeconds(v.contentDetails && v.contentDetails.duration) <= 180 ? 'Short' : 'Video',\n    views: v.statistics && v.statistics.viewCount != null ? Number(v.statistics.viewCount) : null,\n    likes: v.statistics && v.statistics.likeCount != null ? Number(v.statistics.likeCount) : null,\n    comments: v.statistics && v.statistics.commentCount != null ? Number(v.statistics.commentCount) : null,\n    shares: null,\n    permalink: 'https://www.youtube.com/watch?v=' + v.id,\n    created_at: (v.snippet && v.snippet.publishedAt) || null,\n    insights_ok: !!(v.statistics && v.statistics.viewCount != null),\n  },\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4912,
+        240
+      ],
+      "id": "0632301f-3b7b-4df5-ac9f-c4f6c1002d5f",
+      "name": "Normalize YouTube rows"
+    },
+    {
+      "parameters": {
+        "content": "## Social Fetch - YouTube\n\nSub-workflow. Called by **Social Daily Report - Orchestrator**.\n\nCredential: **YouTube account** (YouTube OAuth2 API), select it on all 3 HTTP Request nodes after import.\n\n### Flow\n`channels.list` (get uploads playlist) -> `playlistItems.list` (get up to 50 recent video IDs) -> `videos.list` (snippet + statistics + contentDetails) -> normalize\n\n`account_id` in Accounts config must be the **Channel ID** (format `UC...`), not the @handle.\n\n`type` is `Short` vs `Video`, classified by duration (<=60s = Short) since YouTube Data API v3 has no first-class \"is this a Short\" flag.\n\n**Not included yet:** YouTube Analytics metrics (watch time, retention, traffic sources, subscriber growth) require a *second* OAuth2 credential with the `yt-analytics.readonly` scope -- this credential's default scopes don't cover it.",
+        "height": 400,
+        "width": 560
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2976,
+        -128
+      ],
+      "id": "b6b0de4b-c25a-400d-9442-16b19f9ababb",
+      "name": "Sticky Note",
+      "height": 460,
+      "width": 620
+    },
+    {
+      "parameters": {
+        "jsCode": "// This sub-workflow has 3 possible terminal points (two IF-node \"no data\"\n// dead ends, plus the normal success path) -- each carries different\n// pairedItem lineage. The parent's Execute Workflow node only has ONE\n// input, so reconciling multiple distinct terminal branches back to it can\n// crash n8n's engine (assignPairedItems), same root cause as the Facebook\n// Merge-node bug. Funneling everything through one shared node with\n// pairedItem flattened to a plain 0 avoids ever exporting an ambiguous\n// reference.\nreturn $input.all().map(item => ({ json: item.json, pairedItem: 0 }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5232,
+        512
+      ],
+      "id": "26e2c36a-97c6-4022-9a9f-0e04f1cada27",
+      "name": "Finalize output"
+    }
+  ],
+  "connections": {
+    "When Executed by Parent": {
+      "main": [
+        [
+          {
+            "node": "Get channel uploads playlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get channel uploads playlist": {
+      "main": [
+        [
+          {
+            "node": "Extract uploads playlist id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract uploads playlist id": {
+      "main": [
+        [
+          {
+            "node": "Has uploads playlist?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has uploads playlist?": {
+      "main": [
+        [
+          {
+            "node": "Get playlist items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finalize output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get playlist items": {
+      "main": [
+        [
+          {
+            "node": "Extract video IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract video IDs": {
+      "main": [
+        [
+          {
+            "node": "Has videos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has videos?": {
+      "main": [
+        [
+          {
+            "node": "Get video stats",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finalize output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get video stats": {
+      "main": [
+        [
+          {
+            "node": "Normalize YouTube rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize YouTube rows": {
+      "main": [
+        [
+          {
+            "node": "Finalize output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": {}
+}

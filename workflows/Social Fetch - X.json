@@ -1,0 +1,174 @@
+{
+  "name": "Social Fetch - X",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        24240,
+        7568
+      ],
+      "id": "3c813289-2941-49b4-aad2-442812efd219",
+      "name": "When Executed by Parent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Common landing point for both entry paths (the real \"When Executed by\n// Parent\" caller, and \"Test manually\" for standalone testing), so the\n// normalizer downstream can reliably reference ONE upstream node by name\n// for account_id/channel, regardless of which trigger actually ran.\nreturn $input.all();\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        24480,
+        7568
+      ],
+      "id": "aab7ed64-1b4c-4819-974c-f9d153e6909b",
+      "name": "Prepare request"
+    },
+    {
+      "parameters": {
+        "operation": "Run actor and get dataset",
+        "actorId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "https://console.apify.com/actors/CJdippxWmn9uRfooo",
+          "__regex": "https://console.apify.com/actors/([a-zA-Z0-9]+).*"
+        },
+        "customBody": "={{ JSON.stringify({ twitterContent: 'from:' + $json.account_id + ' -filter:replies -filter:quote -filter:nativeretweets', queryType: 'Latest', maxItems: 20 }) }}"
+      },
+      "id": "b49eb158-26f8-407f-a729-e11de8970716",
+      "name": "Run an Actor and get dataset",
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 2,
+      "position": [
+        24960,
+        7568
+      ],
+      "credentials": {
+        "apifyApi": {
+          "id": "",
+          "name": "Apify account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Maps kaitoeasyapi/twitter-x-data-tweet-scraper output (one item per tweet) into the\n// standard row schema the main report expects.\n//\n// The actor returns a flat list of tweets for ALL accounts in the run, so\n// each tweet is matched back to its account by author.userName against the\n// items that came out of 'Prepare request' (not by item index).\n// Retweets, replies and quotes are dropped: only the account's own original posts count.\n// Accounts with no tweets get a skipped row (ignored by Build report).\n// viewCount is mapped if the actor returns it, otherwise stays null (N/A).\n\nconst norm = s => String(s || '').replace(/^@/, '').toLowerCase();\n\nconst accounts = $('Prepare request').all().map(i => i.json);\nconst byHandle = {};\naccounts.forEach(a => { byHandle[norm(a.account_id)] = a; });\n\nconst MAX_PER_ACCOUNT = 10; // newest N tweets kept per account\nconst seen = new Set();\nconst found = new Set();\nconst results = [];\n\nconst tweets = $input.all()\n  .map(i => i.json || {})\n  .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));\nconst perAccount = {};\n\ntweets.forEach(t => {\n  if (!t.id || t.type === 'mock_tweet') return;\n  if (t.isRetweet || t.isReply || t.isQuote) return; // original posts only\n  const handle = norm(t.author && t.author.userName);\n  const acc = byHandle[handle];\n  if (!acc || seen.has(String(t.id))) return;\n  perAccount[handle] = (perAccount[handle] || 0) + 1;\n  if (perAccount[handle] > MAX_PER_ACCOUNT) return;\n  seen.add(String(t.id));\n  found.add(handle);\n\n  const typeLabel = 'Post';\n  const d = t.createdAt ? new Date(t.createdAt) : null;\n\n  results.push({\n    json: {\n      platform: 'X',\n      channel: acc.channel,\n      account_id: acc.account_id,\n      likes_label: 'Likes',\n      id: String(t.id),\n      title: String(t.text || '').slice(0, 100),\n      type: typeLabel,\n      views: t.viewCount ?? null,\n      likes: t.likeCount ?? null,\n      comments: t.replyCount ?? null,\n      shares: (t.retweetCount ?? 0) + (t.quoteCount ?? 0),\n      permalink: t.url || t.twitterUrl || `https://x.com/${acc.account_id}/status/${t.id}`,\n      created_at: d && !isNaN(d) ? d.toISOString() : null,\n      insights_ok: true,\n    },\n  });\n});\n\naccounts.forEach(a => {\n  if (!found.has(norm(a.account_id))) {\n    results.push({\n      json: {\n        platform: 'X',\n        channel: a.channel,\n        skipped: true,\n        reason: 'No tweets returned by Apify (account empty, actor failed, or credential/plan problem).',\n      },\n    });\n  }\n});\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        25216,
+        7568
+      ],
+      "id": "ca02a524-3245-4bbe-901b-b3bb6e036608",
+      "name": "Normalize X rows"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        24240,
+        7760
+      ],
+      "id": "95684029-1cb8-403d-8ae5-eb7fc3edcad1",
+      "name": "Test manually"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Test data for standalone runs -- the real caller is the main workflow's\n// Accounts config, which passes one item like this per enabled X account.\n// account_id must be the bare handle (x.com/<handle>), no @.\nreturn [\n  { json: { platform: 'X', channel: 'Brand B', account_id: 'brand_b' } },\n  { json: { platform: 'X', channel: 'Brand A', account_id: 'brandA' } },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        24480,
+        7760
+      ],
+      "id": "27c03aef-7a49-47e8-b7b0-8221dec7ed91",
+      "name": "Test accounts"
+    },
+    {
+      "parameters": {
+        "content": "## Social Fetch - X (Apify)\nGets the newest original posts (no retweets, replies or quotes) of an X (Twitter) account: likes, replies, reposts + quotes. Views come from the actor's `viewCount` (can be N/A on some tweets).\n\n### What to change\n1. **Run an Actor and get dataset** -> select your **Apify API** credential (same one as TikTok).\n2. **Test accounts** -> your X handles without @ (e.g. `brandA`). Only used by *Test manually*; the real handles live in the main **Accounts config** (`platform: 'X'`, `account_id` = handle, `enabled: true`).\n3. Click **Test manually** and check the Normalize X rows output.\n\n### Get the token\nApify Console > Settings > API & Integrations > copy the API token -> n8n credential **Apify API**. No expiry unless revoked.\nActor: `kaitoeasyapi/twitter-x-data-tweet-scraper-pay-per-result-cheapest` (about $0.2 per 1,000 tweets, minimum 20 per run; the workflow keeps the newest 10 per account). It returns ~20 tweets per query, so a very busy account may miss older posts. When it finds nothing it can return fake `mock_tweet` rows: Normalize X rows ignores them.\nThe search text `from:<handle> -filter:replies -filter:quote -filter:nativeretweets` asks X itself to skip replies, quotes and retweets (X search syntax; if the actor ignores it, Normalize X rows still drops them).\nStatus: new, not yet tested on real data.",
+        "height": 420,
+        "width": 640
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        24240,
+        7024
+      ],
+      "id": "f84fabd7-1c84-4eee-9455-7a21f08fb3a1",
+      "name": "Sticky Note"
+    }
+  ],
+  "connections": {
+    "When Executed by Parent": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test manually": {
+      "main": [
+        [
+          {
+            "node": "Test accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test accounts": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare request": {
+      "main": [
+        [
+          {
+            "node": "Run an Actor and get dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run an Actor and get dataset": {
+      "main": [
+        [
+          {
+            "node": "Normalize X rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": {}
+}

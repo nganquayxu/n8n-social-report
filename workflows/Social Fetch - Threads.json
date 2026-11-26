@@ -1,0 +1,626 @@
+{
+  "name": "Social Fetch - Threads",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "9a7c7d2c-1dbb-4274-9b1c-997fb8f76d2b",
+      "name": "When Executed by Parent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        608
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ff7d0adb-165d-491b-876f-31b0498ad3e2",
+      "name": "Test manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        16,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Test data for standalone runs. The real caller is the main workflow's\n// Accounts config. account_id = the Threads user id (the numeric id returned\n// when the access token was created / by GET /me).\n// channel decides WHICH credential is used: 'Brand A' -> \"Threads Brand A\",\n// anything else -> \"Threads Brand B\".\nreturn [\n  { json: { platform: 'Threads', channel: 'Brand A', account_id: 'YOUR_THREADS_USER_ID_A', days: 14 } },\n  { json: { platform: 'Threads', channel: 'Brand B', account_id: 'YOUR_THREADS_USER_ID_B', days: 14 } },\n];"
+      },
+      "id": "81e4adba-c1e1-4c07-adcd-ef0f8ef1d37d",
+      "name": "Test accounts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Common landing point for both entry paths (the real \"When Executed by\n// Parent\" caller and \"Test manually\"), so downstream nodes can reference ONE\n// upstream node by name for account_id/channel.\nreturn $input.all();\n"
+      },
+      "id": "423a7a4d-7413-4c13-8c71-15dee71b5396",
+      "name": "Prepare request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "th-posts-brandA",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "Brand A"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ac85e426-2fe7-442c-a0a7-0ad383e333b8",
+      "name": "Which account? (posts)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        768,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.threads.com/v1.0/{{ $json.account_id }}/threads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,text,permalink,timestamp,media_type,is_quote_post,owner,username"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "1304f232-a404-408d-9f00-278c6feee55e",
+      "name": "Get posts (Brand A)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1024,
+        496
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "",
+          "name": "Threads Brand A account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Select the Query Auth credential (Name = access_token, Value = the long-lived Threads token)."
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.threads.com/v1.0/{{ $json.account_id }}/threads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,text,permalink,timestamp,media_type,is_quote_post,owner,username"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "f51166e4-3ba8-4ba7-bfb0-3e5e83790b0a",
+      "name": "Get posts (Brand B)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1024,
+        720
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "",
+          "name": "Threads Brand B account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Select the Query Auth credential (Name = access_token, Value = the long-lived Threads token)."
+    },
+    {
+      "parameters": {},
+      "id": "04eb5799-4907-4d40-88a4-52b6e4e64236",
+      "name": "Merge posts",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        1280,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns the posts responses into ONE item per eligible post, each carrying\n// the post's own fields plus the account it belongs to. The next step then\n// calls /{media-id}/insights per post.\n//\n// Accounts are matched by `owner.id` (requested in the posts call), not by\n// item position, because the two account branches are merged back together.\n\nconst ctxs = $('Prepare request').all().map(i => i.json);\nconst byOwner = new Map(ctxs.map(c => [String(c.account_id), c]));\n\nfunction parseTs(s) {\n  if (!s) return NaN;\n  // Threads returns \"2024-01-01T10:00:00+0000\" (offset without a colon).\n  return new Date(String(s).replace(/([+-]\\d{2})(\\d{2})$/, '$1:$2')).getTime();\n}\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const res = item.json || {};\n  const body = res.body || {};\n  if (!Array.isArray(body.data)) continue; // API error: reported by the normalizer\n\n  for (const p of body.data) {\n    if (!p || !p.id) continue;\n    if (p.media_type === 'REPOST_FACADE') continue; // someone else's post -- no insights, not ours\n\n    const ctx = byOwner.get(String(p.owner && p.owner.id)) || (ctxs.length === 1 ? ctxs[0] : null);\n    if (!ctx) continue;\n\n    const days = Number(ctx.days) || 14;\n    const ts = parseTs(p.timestamp);\n    if (Number.isFinite(ts) && ts < Date.now() - days * 86400000) continue;\n\n    out.push({\n      json: {\n        media_id: String(p.id),\n        channel: ctx.channel,\n        account_id: ctx.account_id,\n        post: p,\n      },\n      pairedItem: 0,\n    });\n  }\n}\n\nif (!out.length) {\n  // Marker so the workflow still reaches the normalizer (and can report\n  // \"no posts\" / the API error) instead of ending silently.\n  return [{ json: { _none: true, channel: ctxs[0] ? ctxs[0].channel : '' }, pairedItem: 0 }];\n}\n\nreturn out;\n"
+      },
+      "id": "bec41fac-79b9-4e79-abda-b244aecc5ffe",
+      "name": "Build insights requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r1a",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    },
+                    "leftValue": "={{ $json.media_id }}",
+                    "rightValue": ""
+                  },
+                  {
+                    "id": "r1b",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.channel }}",
+                    "rightValue": "Brand A"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Brand A"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r2a",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    },
+                    "leftValue": "={{ $json.media_id }}",
+                    "rightValue": ""
+                  },
+                  {
+                    "id": "r2b",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "leftValue": "={{ $json.channel }}",
+                    "rightValue": "Brand A"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Brand B"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "No posts"
+        }
+      },
+      "id": "dd103ff9-2545-4c66-b20a-92efce617ba2",
+      "name": "Which account? (insights)",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1728,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.threads.com/v1.0/{{ $json.media_id }}/insights",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "metric",
+              "value": "views,likes,replies,reposts,quotes"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "0488a18f-9b4e-4fce-894d-2c4686d40ffb",
+      "name": "Get insights (Brand A)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1984,
+        496
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "",
+          "name": "Threads Brand A account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Select the Query Auth credential (Name = access_token, Value = the long-lived Threads token)."
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.threads.com/v1.0/{{ $json.media_id }}/insights",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "metric",
+              "value": "views,likes,replies,reposts,quotes"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "91ad0916-bdb1-4640-90cc-d61abfdfbe2f",
+      "name": "Get insights (Brand B)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1984,
+        720
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "",
+          "name": "Threads Brand B account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Select the Query Auth credential (Name = access_token, Value = the long-lived Threads token)."
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "id": "3663c868-383f-42a7-9588-2a37156a7062",
+      "name": "Merge insights",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        2240,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Maps Threads API data into the standard row schema.\n//   views    <- insights `views`\n//   likes    <- insights `likes`\n//   comments <- insights `replies`\n//   shares   <- insights `reposts` + `quotes`\n// Insights responses are matched to posts by media id (the response's\n// data[].id is \"<media_id>/insights/<metric>/lifetime\"), never by position.\n// A post whose insights call failed is still emitted (insights_ok: false,\n// metrics null) so it isn't silently dropped.\n\nconst ctxs = $('Prepare request').all().map(i => i.json);\n\n// --- insights by media id ---\nconst metricsById = new Map();\nfor (const item of $input.all()) {\n  const body = (item.json && item.json.body) || {};\n  if (!Array.isArray(body.data)) continue;\n  for (const m of body.data) {\n    if (!m || !m.id || !m.name) continue;\n    const mediaId = String(m.id).split('/')[0];\n    const v = m.values && m.values[0] ? m.values[0].value : (m.total_value ? m.total_value.value : null);\n    if (!metricsById.has(mediaId)) metricsById.set(mediaId, {});\n    metricsById.get(mediaId)[m.name] = typeof v === 'number' ? v : null;\n  }\n}\n\nconst posts = $('Build insights requests').all().map(i => i.json).filter(j => j.media_id);\n\n// --- posts-call errors (for the \"nothing returned\" message) ---\nlet apiError = '';\nfor (const item of $('Merge posts').all()) {\n  const r = item.json || {};\n  if (r.statusCode >= 400 || (r.body && r.body.error)) {\n    const e = (r.body && r.body.error) || {};\n    apiError = `Threads API error ${r.statusCode || ''}: ${e.message || 'request failed'}`.trim();\n  }\n}\n\nfunction parseIso(s) {\n  if (!s) return null;\n  const d = new Date(String(s).replace(/([+-]\\d{2})(\\d{2})$/, '$1:$2'));\n  return Number.isNaN(d.getTime()) ? null : d.toISOString();\n}\n\nfunction postType(p) {\n  if (p.is_quote_post) return 'Quote';\n  switch (p.media_type) {\n    case 'IMAGE': return 'Photo';\n    case 'VIDEO': return 'Video';\n    case 'CAROUSEL_ALBUM': return 'Carousel';\n    case 'AUDIO': return 'Audio';\n    default: return 'Text';\n  }\n}\n\nconst num = v => (typeof v === 'number' ? v : null);\n\nconst rows = posts.map(j => {\n  const p = j.post;\n  const m = metricsById.get(j.media_id);\n  const ok = !!m && typeof m.views === 'number';\n  const shares = m && (num(m.reposts) !== null || num(m.quotes) !== null)\n    ? (m.reposts || 0) + (m.quotes || 0)\n    : null;\n\n  return {\n    json: {\n      platform: 'Threads',\n      channel: j.channel,\n      account_id: j.account_id,\n      likes_label: 'Likes',\n      id: j.media_id,\n      title: String(p.text || '').replace(/\\s+/g, ' ').trim().slice(0, 100),\n      type: postType(p),\n      views: ok ? m.views : null,\n      likes: m ? num(m.likes) : null,\n      comments: m ? num(m.replies) : null,\n      shares,\n      permalink: p.permalink || null,\n      created_at: parseIso(p.timestamp),\n      insights_ok: ok,\n    },\n    pairedItem: 0,\n  };\n});\n\n// Accounts that returned no posts: one skipped row each (the report ignores them).\nconst withPosts = new Set(posts.map(j => String(j.account_id)));\nfor (const c of ctxs) {\n  if (withPosts.has(String(c.account_id))) continue;\n  rows.push({\n    json: {\n      platform: 'Threads',\n      channel: c.channel,\n      skipped: true,\n      reason: apiError || `No Threads posts in the last ${Number(c.days) || 14} days.`,\n    },\n    pairedItem: 0,\n  });\n}\n\nreturn rows;\n"
+      },
+      "id": "681801ed-c497-44fd-a35f-c610b62bc8f5",
+      "name": "Normalize Threads rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Social Fetch - Threads\n\nOfficial Threads API (`graph.threads.com`, **not** the Facebook/Instagram Graph API -- separate app, separate token).\n\n1. `GET /{user-id}/threads` -> latest 50 posts (needs `threads_basic`).\n2. `GET /{media-id}/insights?metric=views,likes,replies,reposts,quotes` per post (needs `threads_manage_insights`).\n\nRow mapping: views=views, likes=likes, comments=replies, shares=reposts+quotes. Reposts of other people's posts (REPOST_FACADE) are skipped.\n\n### Credentials (one per account)\nQuery Auth, **Name = access_token**, Value = long-lived token. channel `Brand A` uses the *(Brand A)* HTTP nodes, any other channel uses the *(Brand B)* nodes -- select the matching credential on each.\n\n### Token\nLong-lived tokens last 60 days. Refresh before expiry: `GET https://graph.threads.com/refresh_access_token?grant_type=th_refresh_token&access_token=<token>` and paste the new token into the credential.\n",
+        "height": 420,
+        "width": 560
+      },
+      "id": "e893f119-7d5a-4474-9df7-6d25dafefa93",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Parent": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test manually": {
+      "main": [
+        [
+          {
+            "node": "Test accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test accounts": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare request": {
+      "main": [
+        [
+          {
+            "node": "Which account? (posts)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which account? (posts)": {
+      "main": [
+        [
+          {
+            "node": "Get posts (Brand A)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get posts (Brand B)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get posts (Brand A)": {
+      "main": [
+        [
+          {
+            "node": "Merge posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get posts (Brand B)": {
+      "main": [
+        [
+          {
+            "node": "Merge posts",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge posts": {
+      "main": [
+        [
+          {
+            "node": "Build insights requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build insights requests": {
+      "main": [
+        [
+          {
+            "node": "Which account? (insights)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which account? (insights)": {
+      "main": [
+        [
+          {
+            "node": "Get insights (Brand A)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get insights (Brand B)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge insights",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Get insights (Brand A)": {
+      "main": [
+        [
+          {
+            "node": "Merge insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get insights (Brand B)": {
+      "main": [
+        [
+          {
+            "node": "Merge insights",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge insights": {
+      "main": [
+        [
+          {
+            "node": "Normalize Threads rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": {}
+}

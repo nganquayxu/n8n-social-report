@@ -1,0 +1,517 @@
+{
+  "name": "Social Fetch - Facebook New",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        6496,
+        656
+      ],
+      "id": "6ada5dcc-cc51-46f2-be25-2f917e4305a8",
+      "name": "When Executed by Parent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Classify every post as Reel / Photo / Video (dropping plain text/link\n// posts, which aren't in scope) and carry the account context forward.\n// Reels still need a separate insights call for play counts; Photos and\n// Videos already have likes/comments/shares from the fields above.\nconst ctx = $('When Executed by Parent').first().json;\nconst posts = $input.first().json.data || [];\nconst out = [];\n\nfor (const p of posts) {\n  const att = p.attachments && p.attachments.data ? p.attachments.data[0] : null;\n  const url = p.permalink_url || (att && att.url) || '';\n  const m = url.match(/reel\\/(\\d+)/);\n  const reelId = (att && att.target && att.target.id) || (m ? m[1] : null);\n  const isReel = url.includes('/reel/') && !!reelId;\n\n  const attType = (att && (att.media_type || att.type)) || null;\n  const type = isReel ? 'Reel'\n    : attType === 'photo' || attType === 'album' ? 'Photo'\n    : attType === 'video' || attType === 'video_inline' || attType === 'video_autoplay' || attType === 'video_direct_response' ? 'Video'\n    : null;\n\n  if (!type) continue; // out of scope: plain text/status/link posts\n\n  out.push({\n    json: {\n      platform: 'Facebook',\n      channel: ctx.channel,\n      account_id: ctx.account_id,\n      likes_label: ctx.likes_label || 'Reactions',\n      post_id: p.id,\n      reel_id: isReel ? String(reelId) : null,\n      is_reel: isReel,\n      type,\n      title: (p.message || (att && att.title) || `Facebook ${type}`).split('\\n')[0].slice(0, 60),\n      permalink: url,\n      created_at: p.created_time || null,\n      likes: (p.likes && p.likes.summary) ? p.likes.summary.total_count : null,\n      comments: (p.comments && p.comments.summary) ? p.comments.summary.total_count : null,\n      shares: p.shares ? (p.shares.count || 0) : 0,\n    },\n    pairedItem: 0,\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7376,
+        672
+      ],
+      "id": "a359854c-bc3e-49d0-b4ae-8b1e13c6677e",
+      "name": "Extract posts"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v25.0/{{ $json.reel_id }}/video_insights",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "metric",
+              "value": "fb_reels_total_plays,post_video_likes_by_reaction_type,post_video_social_actions"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        8336,
+        512
+      ],
+      "id": "ae0cdf8e-138e-4d60-9f35-dc62aa9c8dec",
+      "name": "Get reel insights - Brand B",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "",
+          "name": "Facebook Brand B account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pair insights back to reels via pairedItem (never by raw array index)\n// -> a single failed request can no longer shift the metrics of other reels.\nconst reels = $('Extract posts').all();\nconst items = $input.all();\n\nfunction srcIndex(item, fallback) {\n  const pi = item.pairedItem;\n  if (typeof pi === 'number') return pi;\n  if (Array.isArray(pi) && pi.length) return pi[0].item;\n  if (pi && typeof pi === 'object' && pi.item !== undefined) return pi.item;\n  return fallback;\n}\n\nfunction findMetric(list, name) {\n  return (list || []).find(m => m.name === name);\n}\n\nfunction sumAll(metric) {\n  const v = metric && metric.values && metric.values[0] ? metric.values[0].value : null;\n  if (v === null || v === undefined) return 0;\n  if (typeof v === 'object') return Object.values(v).reduce((s, n) => s + Number(n || 0), 0);\n  return Number(v) || 0;\n}\n\nfunction pickKey(metric, key) {\n  const v = metric && metric.values && metric.values[0] ? metric.values[0].value : null;\n  if (v && typeof v === 'object') return Number(v[key] || 0);\n  return 0;\n}\n\nconst rows = items.map((item, i) => {\n  const reel = (reels[srcIndex(item, i)] || {}).json || {};\n  const data = (item.json && item.json.data) || [];\n  const ok = !(item.json && item.json.error) && data.length > 0;\n\n  return {\n    json: {\n      platform: 'Facebook',\n      channel: reel.channel,\n      account_id: reel.account_id,\n      likes_label: reel.likes_label || 'Reactions',\n      id: String(reel.reel_id || reel.post_id || ''),\n      title: reel.title || 'Facebook Reel',\n      type: 'Reel',\n      views: sumAll(findMetric(data, 'fb_reels_total_plays')),\n      likes: sumAll(findMetric(data, 'post_video_likes_by_reaction_type')),\n      comments: pickKey(findMetric(data, 'post_video_social_actions'), 'comment'),\n      shares: pickKey(findMetric(data, 'post_video_social_actions'), 'share'),\n      permalink: reel.permalink || '',\n      created_at: reel.created_at || null,\n      insights_ok: ok,\n    },\n    pairedItem: 0,\n  };\n});\n\nreturn rows.filter(r => r.json.id);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8816,
+        432
+      ],
+      "id": "9749261c-c262-4f7e-b881-b2e1f1c06354",
+      "name": "Normalize FB reel rows"
+    },
+    {
+      "parameters": {
+        "content": "## Social Fetch - Facebook\n\nSub-workflow. Called by **Social Daily Report - Orchestrator**.\n\nInput: `account_id` (Page ID), `channel`, `likes_label`, `days`\n\n### Two credentials, routed by channel\nMeta migrated both Pages to the \"New Pages Experience\", which rejects a User Access Token -- each Page needs its own **Page Access Token**. `Which account? (posts)` and `Which account? (insights)` both route by `channel` (exact match on \"Brand A\"):\n- Brand A branch -> credential **Facebook Brand A account**\n- Everything else (Brand B) -> credential **Facebook Brand B account**\n\nBoth the posts fetch AND the reel-insights fetch need this split -- a Page token only authorizes calls for its own Page, so a single shared credential can't serve both accounts' Reels either.\n\n### What changed vs the old build\n- Removed `Get page accounts` + `Get page token`. The Page token now lives in the credential, so we no longer call the accounts endpoint.\n- `Get reel insights` has **Always Output Data** + **Continue on error** enabled, so one failing reel can no longer break the whole report.\n- Insights are matched to their source post via `pairedItem` instead of array index, which removes the silent metric-misalignment bug.\n- `Finalize output` flattens `pairedItem` after the multi-input `Merge rows` node, working around an n8n engine bug (n8n-io/n8n#35559) where an item routed through a Merge node's second input crashes the parent Execute Workflow node.",
+        "height": 380,
+        "width": 560
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        6480,
+        0
+      ],
+      "id": "c8e7fed5-9e97-40b7-ad4e-a82394d295b6",
+      "name": "Sticky Note",
+      "height": 560,
+      "width": 640
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "is-reel",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.is_reel }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        7584,
+        672
+      ],
+      "id": "c2f8b1d2-4ccd-4966-8892-132dcdba6693",
+      "name": "Is Reel?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Photos and Videos already have likes/comments/shares fetched directly\n// alongside the post itself (see \"Get page posts\" fields) -- no separate\n// insights call needed here, unlike Reels which require /video_insights\n// for play counts.\nreturn $input.all().map(item => {\n  const p = item.json;\n\n  return {\n    json: {\n      platform: 'Facebook',\n      channel: p.channel,\n      account_id: p.account_id,\n      likes_label: p.likes_label,\n      id: String(p.post_id),\n      title: p.title,\n      type: p.type,\n      views: null,\n      likes: p.likes,\n      comments: p.comments,\n      shares: p.shares,\n      permalink: p.permalink,\n      created_at: p.created_at,\n      insights_ok: p.likes != null || p.comments != null,\n    },\n    pairedItem: 0,\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8816,
+        688
+      ],
+      "id": "703b7e8d-e6ed-441d-a5a5-1872c0d3ee36",
+      "name": "Normalize FB post rows"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        9168,
+        528
+      ],
+      "id": "9fd14cb3-094f-45de-8510-6a688b3d4df5",
+      "name": "Merge rows"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge (multi-input) as the sub-workflow's terminal node tags each item\n// with pairedItem: { item: 0, input: 1 } for anything that arrived via its\n// second input -- but the parent's Execute Workflow node only has ONE\n// input, so that reference is invalid there and crashes n8n's engine\n// (assignPairedItems). Flattening pairedItem back to a plain 0 here, as\n// the new terminal node, avoids ever exporting that invalid reference.\nreturn $input.all().map(item => ({ json: item.json, pairedItem: 0 }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9392,
+        528
+      ],
+      "id": "28c08a52-a11d-479d-9869-effb4df40d85",
+      "name": "Finalize output"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v25.0/{{ $json.account_id }}/posts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,message,created_time,permalink_url,attachments{target,url,title,type,media_type},likes.summary(true),comments.summary(true),shares"
+            },
+            {
+              "name": "since",
+              "value": "={{ DateTime.now().setZone('Asia/Singapore').minus({ days: $json.days || 14 }).startOf('day').toSeconds() }}"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7072,
+        816
+      ],
+      "id": "162775c7-17ae-4e1a-8426-d95bacb56977",
+      "name": "Get page posts - Brand B",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "",
+          "name": "Facebook Brand B account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v25.0/{{ $json.account_id }}/posts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,message,created_time,permalink_url,attachments{target,url,title,type,media_type},likes.summary(true),comments.summary(true),shares"
+            },
+            {
+              "name": "since",
+              "value": "={{ DateTime.now().setZone('Asia/Singapore').minus({ days: $json.days || 14 }).startOf('day').toSeconds() }}"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7072,
+        496
+      ],
+      "id": "2d148c05-eef8-41cf-9760-f910f330f7e4",
+      "name": "Get page posts - Brand A",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "",
+          "name": "Facebook Brand A account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "is-brandA-posts",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "Brand A"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6752,
+        656
+      ],
+      "id": "4a28a31e-5822-412c-9344-d1937a992dd1",
+      "name": "Which account? (posts)"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v25.0/{{ $json.reel_id }}/video_insights",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "metric",
+              "value": "fb_reels_total_plays,post_video_likes_by_reaction_type,post_video_social_actions"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        8336,
+        256
+      ],
+      "id": "05fbe5ba-1d3c-4b4d-b8b1-899089883199",
+      "name": "Get reel insights - Brand A",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "",
+          "name": "Facebook Brand A account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "is-brandA-insights",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "Brand A"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        7872,
+        400
+      ],
+      "id": "233bbd69-39e1-421d-a35c-caf65a20da2c",
+      "name": "Which account? (insights)"
+    }
+  ],
+  "connections": {
+    "When Executed by Parent": {
+      "main": [
+        [
+          {
+            "node": "Which account? (posts)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract posts": {
+      "main": [
+        [
+          {
+            "node": "Is Reel?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Reel?": {
+      "main": [
+        [
+          {
+            "node": "Which account? (insights)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize FB post rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize FB reel rows": {
+      "main": [
+        [
+          {
+            "node": "Merge rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize FB post rows": {
+      "main": [
+        [
+          {
+            "node": "Merge rows",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge rows": {
+      "main": [
+        [
+          {
+            "node": "Finalize output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which account? (posts)": {
+      "main": [
+        [
+          {
+            "node": "Get page posts - Brand A",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get page posts - Brand B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get page posts - Brand B": {
+      "main": [
+        [
+          {
+            "node": "Extract posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get page posts - Brand A": {
+      "main": [
+        [
+          {
+            "node": "Extract posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which account? (insights)": {
+      "main": [
+        [
+          {
+            "node": "Get reel insights - Brand A",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get reel insights - Brand B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get reel insights - Brand B": {
+      "main": [
+        [
+          {
+            "node": "Normalize FB reel rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get reel insights - Brand A": {
+      "main": [
+        [
+          {
+            "node": "Normalize FB reel rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "meta": {}
+}

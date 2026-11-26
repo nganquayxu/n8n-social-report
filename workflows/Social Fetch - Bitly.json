@@ -1,0 +1,181 @@
+{
+  "name": "Social Fetch - Bitly",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "cc0d679a-c614-45a8-99d6-880d9d6f538c",
+      "name": "Called by main workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        4736,
+        2416
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "id": "a91789e1-5037-44e5-93e9-6b56901192e7",
+      "name": "Test manually",
+      "position": [
+        4736,
+        2576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mirrors TRACKED_LINKS and MASTERCLASS_LINKS in the main workflow's \"Build report\" node.\n// Keep both lists in sync when adding, removing, or renaming a shortened link.\n\nconst TRACKED_LINKS = [\n  { affiliate_id: 'YTS', url: 'https://short.example.com/syt' },\n  { affiliate_id: 'FBS', url: 'https://short.example.com/sfb' },\n  { affiliate_id: 'FBCC', url: 'https://short.example.com/ccfb' },\n  { affiliate_id: 'IGS', url: 'https://short.example.com/sig' },\n  { affiliate_id: 'IGCC', url: 'https://short.example.com/ccig' },\n  { affiliate_id: 'TTS', url: 'https://short.example.com/stt' },\n  { affiliate_id: 'TTCC', url: 'https://short.example.com/cctt' },\n  { affiliate_id: 'TWS', url: 'https://short.example.com/stww' },\n  { affiliate_id: 'TWCC', url: 'https://short.example.com/cctw' },\n  { affiliate_id: 'TDS', url: 'https://short.example.com/std' },\n  { affiliate_id: 'TDCC', url: 'https://short.example.com/cctd' },\n  { affiliate_id: 'LIS', url: 'https://short.example.com/sli' },\n  { affiliate_id: 'LICC', url: 'https://short.example.com/ccli' },\n  { affiliate_id: 'BSCC', url: 'https://short.example.com/ccbs' },\n  { affiliate_id: 'FBSGC', url: 'https://short.example.com/fbg' },\n  { affiliate_id: 'WASGC', url: 'https://short.example.com/wag' },\n];\n\n// Free Masterclass links (example.com/masterclass) -- same affiliate IDs, different short URLs.\nconst MASTERCLASS_LINKS = [\n  { affiliate_id: 'YTS', url: 'https://short.example.com/msyt' },\n  { affiliate_id: 'FBS', url: 'https://short.example.com/msfb' },\n  { affiliate_id: 'FBCC', url: 'https://short.example.com/mccfb' },\n  { affiliate_id: 'IGS', url: 'https://short.example.com/msig' },\n  { affiliate_id: 'IGCC', url: 'https://short.example.com/mccig' },\n  { affiliate_id: 'TTS', url: 'https://short.example.com/mstt' },\n  { affiliate_id: 'TTCC', url: 'https://short.example.com/mcctt' },\n  { affiliate_id: 'TWS', url: 'https://short.example.com/mstw' },\n  { affiliate_id: 'TWCC', url: 'https://short.example.com/mcctw' },\n  { affiliate_id: 'TDS', url: 'https://short.example.com/mstd' },\n  { affiliate_id: 'TDCC', url: 'https://short.example.com/mcctd' },\n  { affiliate_id: 'LIS', url: 'https://short.example.com/msli' },\n  { affiliate_id: 'LICC', url: 'https://short.example.com/mccli' },\n  { affiliate_id: 'BSCC', url: 'https://short.example.com/mccbs' },\n  { affiliate_id: 'FBSGC', url: 'https://short.example.com/mfbg' },\n  { affiliate_id: 'WASGC', url: 'https://short.example.com/mwag' },\n];\n\nreturn [...TRACKED_LINKS, ...MASTERCLASS_LINKS].map(link => ({\n  json: {\n    ...link,\n    bitlink: link.url.replace(/^https?:\\/\\//, ''),\n  },\n}));"
+      },
+      "id": "580e73b8-9866-453d-b3df-47cf977f3db9",
+      "name": "Tracked links",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4976,
+        2496
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api-ssl.bitly.com/v4/bitlinks/{{ $json.bitlink }}/clicks/summary",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "unit",
+              "value": "day"
+            },
+            {
+              "name": "units",
+              "value": "1"
+            },
+            {
+              "name": "unit_reference",
+              "value": "={{ DateTime.now().setZone('Asia/Singapore').minus({ days: 1 }).endOf('day').toFormat(\"yyyy-MM-dd'T'HH:mm:ssZZZ\") }}"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 200
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "91098d5d-c874-4f18-9490-a268cae02f06",
+      "name": "Fetch Bitly clicks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5216,
+        2496
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Bitly Bearer"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Requires the 'Bitly Bearer' (HTTP Bearer Auth) credential — paste the raw Bitly access token, no 'Bearer ' prefix needed, n8n adds it. Returns clicks for Bitly's trailing 1-day window (unit=day, units=1), i.e. roughly the last 24 hours — not a lifetime total."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pairs each Bitly response back to its tracked link by item index (robust\n// against response reordering), and always emits one row per tracked link --\n// even on failure -- so the main report shows N/A instead of silently\n// dropping a platform from the Link performance table.\n\nconst responses = $input.all();\n\nreturn responses.map((item, index) => {\n  const target = $('Tracked links').itemMatching(index).json;\n  const result = item.json;\n  const body = result && result.body;\n  const statusCode = result && result.statusCode;\n\n  const ok =\n    typeof statusCode === 'number' &&\n    statusCode >= 200 &&\n    statusCode < 300 &&\n    body &&\n    typeof body.total_clicks === 'number';\n\n  return {\n    json: {\n      kind: 'link',\n      url: target.url,\n      clicks: ok ? body.total_clicks : null,\n      source: ok ? 'bitly' : '',\n    },\n  };\n});\n"
+      },
+      "id": "5eb736eb-0d26-467f-885a-a211417dd897",
+      "name": "Build link items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5456,
+        2496
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Bitly link clicks\n\nStateless: on every call it fetches clicks for a single 1-day window (`unit=day, units=1`) for each link in **Tracked links**, and returns one item per link:\n\n```\n{ kind: 'link', url, clicks, source: 'bitly' }\n```\n\n`unit_reference` is pinned to *yesterday, end of day (Asia/Singapore)* rather than left to default to \"now\". Reason: the main report runs at 8AM SGT = 00:00 UTC, and Bitly's day-bucket for \"now\" at that exact moment has barely started -- every link read back 0 clicks on the scheduled run even though real clicks existed. Pinning to a fully-elapsed day avoids reading a bucket that just reset.\n\nThe main workflow's `Build report` node already computes the change-since-last-snapshot and persists `links` in its own snapshot, so no history/state is kept here.\n\n### Setup\n1. Open **Fetch Bitly clicks** and select a Header Auth credential: **Authorization** = **Bearer YOUR_TOKEN**.\n2. Adding/removing a tracked link? Update the `TRACKED_LINKS` array in **Tracked links** here AND in the main workflow's `Build report` (`TRACKED_LINKS` / `LINK_PLATFORMS`).\n3. Called by the main workflow via Execute Workflow (mode: once, wait for completion). **Test manually** lets you run it standalone.\n\nA failed/unauthorized Bitly call yields `clicks: null` for that link only; the row shows N/A in Slack rather than breaking the report.\n\nDocs: https://dev.bitly.com/api-reference/#getClicksSummaryForBitlink",
+        "height": 668,
+        "width": 620
+      },
+      "id": "dea57cec-d1d1-46df-b4f1-613800f18dd1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        4704,
+        1680
+      ]
+    }
+  ],
+  "connections": {
+    "Called by main workflow": {
+      "main": [
+        [
+          {
+            "node": "Tracked links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test manually": {
+      "main": [
+        [
+          {
+            "node": "Tracked links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tracked links": {
+      "main": [
+        [
+          {
+            "node": "Fetch Bitly clicks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Bitly clicks": {
+      "main": [
+        [
+          {
+            "node": "Build link items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "Asia/Singapore",
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "meta": {}
+}

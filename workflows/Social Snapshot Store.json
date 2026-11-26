@@ -1,0 +1,145 @@
+{
+  "name": "Social Snapshot Store",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "social-snapshot-load",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ada3a758-1b8e-422d-a5ad-ef674d62d143",
+      "name": "Webhook Load"
+    },
+    {
+      "parameters": {
+        "jsCode": "const key = $json.params?.key || $json.query?.key || 'default';\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.snapshots) staticData.snapshots = {};\nconst prev = staticData.snapshots[key] || { videos: {}, date: null };\nreturn [{ json: { key, prev } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "2312bb6f-0ec8-469c-bc3e-2af1b990a24a",
+      "name": "Load snapshot data"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "389e1117-c799-41e9-af42-57d6c70eb9ce",
+      "name": "Respond Load"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "social-snapshot-save",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        224
+      ],
+      "id": "ac437eb8-4025-4da6-aded-3a148e3106d1",
+      "name": "Webhook Save"
+    },
+    {
+      "parameters": {
+        "jsCode": "const key = $json.params?.key || $json.query?.key || 'default';\nconst src = $json.date ? $json : ($json.body || {});\nconst snapshot = {\n  date: src.date,\n  videos: src.videos || {},\n  links: src.links || {},\n};\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.snapshots) staticData.snapshots = {};\nstaticData.snapshots[key] = snapshot;\nreturn [{ json: { key, saved: true, date: snapshot.date, count: Object.keys(snapshot.videos).length, linkCount: Object.keys(snapshot.links).length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        224
+      ],
+      "id": "334c82e2-f5f7-4591-8159-23e314075420",
+      "name": "Save snapshot data"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        224
+      ],
+      "id": "82f5a3c0-19b5-48e4-92d5-80a1b5126aea",
+      "name": "Respond Save"
+    }
+  ],
+  "connections": {
+    "Webhook Load": {
+      "main": [
+        [
+          {
+            "node": "Load snapshot data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load snapshot data": {
+      "main": [
+        [
+          {
+            "node": "Respond Load",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Save": {
+      "main": [
+        [
+          {
+            "node": "Save snapshot data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save snapshot data": {
+      "main": [
+        [
+          {
+            "node": "Respond Save",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": {}
+}
