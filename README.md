@@ -22,6 +22,12 @@ Platforms: Facebook, Instagram, TikTok, YouTube, X, LinkedIn (company page + per
 
 Every fetcher is a sub-workflow that returns the same row schema (`platform, channel, id, title, views, likes, comments, permalink`), so adding a platform means adding one more fetcher.
 
+## Sample report
+
+This is the kind of message the workflow posts to Slack every morning (made-up numbers):
+
+![Sample Slack report](docs/sample-report.png)
+
 ## How it works
 
 ### Map of the main workflow
